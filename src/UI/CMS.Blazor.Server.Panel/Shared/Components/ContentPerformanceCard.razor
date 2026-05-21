@@ -1,0 +1,160 @@
+
+<div class="perf-card border-0 shadow-sm card">
+    <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+        <span class="fw-semibold small">İçerik Performansı</span>
+        @if (_completion is not null)
+        {
+            <span class="badge @(_completion.CanPublish ? "bg-success" : "bg-warning text-dark")">
+                %@_completion.OverallScore Hazır
+            </span>
+        }
+    </div>
+    <div class="card-body py-3 px-3">
+        @if (_loading)
+        {
+            <div class="text-center py-2">
+                <div class="spinner-border spinner-border-sm" style="color:var(--accent)"></div>
+            </div>
+        }
+        else if (_completion is null)
+        {
+            <p class="text-muted small text-center py-2">Yüklenemedi</p>
+        }
+        else
+        {
+            <!-- Genel skor -->
+            <div class="mb-3 text-center">
+                <div class="perf-ring" style="--pct:@_completion.OverallScore;--color:@ScoreColor(_completion.OverallScore)">
+                    <div class="perf-ring-inner">
+                        <div class="perf-ring-value" style="color:@ScoreColor(_completion.OverallScore)">
+                            @_completion.OverallScore%
+                        </div>
+                        <div class="perf-ring-label">Tamamlandı</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dil skorları -->
+            <div class="mb-3">
+                <div class="fw-semibold small mb-2">Dil Durumu</div>
+                @foreach (var lang in _completion.Languages)
+                {
+                    <div class="mb-2">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-secondary" style="font-size:10px">@lang.Code.ToUpper()</span>
+                                @if (lang.MissingFields.Any())
+                                {
+                                    <span class="text-danger" style="font-size:10px" title="@string.Join(", ", lang.MissingFields)">
+                                        @lang.MissingFields.Count eksik alan
+                                    </span>
+                                }
+                            </div>
+                            <span class="small fw-medium" style="color:@ScoreColor(lang.Score)">@lang.Score%</span>
+                        </div>
+                        <div style="height:4px;background:var(--surface-3);border-radius:2px">
+                            <div style="height:100%;width:@(lang.Score)%;background:@ScoreColor(lang.Score);border-radius:2px;transition:.4s"></div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <!-- Yayınlanabilir mi? -->
+            @if (_completion.CanPublish)
+            {
+                <div class="alert alert-success py-1 small text-center mb-2">
+                    ✓ İçerik yayına hazır
+                </div>
+                @if (_completion.CanPublishLanguages.Any())
+                {
+                    <div class="text-center">
+                        <small class="text-muted">Yayınlanabilir diller: </small>
+                        @foreach (var l in _completion.CanPublishLanguages)
+                        {
+                            <span class="badge bg-success me-1" style="font-size:10px">@l.ToUpper()</span>
+                        }
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="alert alert-warning py-1 small text-center mb-0">
+                    ⚠ Eksik alanlar tamamlanmadan yayınlanamaz
+                </div>
+            }
+
+            <!-- Section/Block detayı (collapsible) -->
+            @if (_completion.Sections.Any())
+            {
+                <div class="mt-3">
+                    <button class="btn btn-link btn-sm p-0 small"
+                            @onclick="() => _showSections = !_showSections">
+                        @(_showSections ? "▲ Bölümleri Gizle" : "▼ Bölüm Detayları")
+                    </button>
+                    @if (_showSections)
+                    {
+                        <div class="mt-2">
+                            @foreach (var sec in _completion.Sections)
+                            {
+                                <div class="mb-2">
+                                    <div class="fw-medium" style="font-size:11px;color:var(--text-2)">📄 @sec.Name</div>
+                                    @foreach (var block in sec.Blocks.Where(b => b.Score < 100))
+                                    {
+                                        <div class="d-flex align-items-center gap-2 ps-2 mt-1">
+                                            <span class="badge bg-secondary" style="font-size:9px">@block.Type</span>
+                                            <div class="flex-fill" style="height:3px;background:var(--border);border-radius:2px">
+                                                <div style="height:100%;width:@(block.Score)%;background:@ScoreColor(block.Score);border-radius:2px"></div>
+                                            </div>
+                                            @if (block.MissingTranslations.Any())
+                                            {
+                                                <span class="text-danger" style="font-size:9px">
+                                                    @string.Join(",", block.MissingTranslations.Select(t => t.ToUpper()))
+                                                </span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    .perf-ring {
+        width: 80px; height: 80px;
+        border-radius: 50%;
+        background: conic-gradient(var(--color) calc(var(--pct) * 1%), var(--surface-3) 0);
+        display: flex; align-items: center; justify-content: center;
+        margin: 0 auto;
+    }
+    .perf-ring-inner {
+        width: 64px; height: 64px;
+        border-radius: 50%;
+        background: var(--surface-0);
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .perf-ring-value { font-size: 14px; font-weight: 700; line-height: 1; }
+    .perf-ring-label { font-size: 9px; color: var(--text-3); }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public Guid ContentId { get; set; }
+
+    bool _loading = true, _showSections;
+    ContentCompletionDto? _completion;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        var r = await ContentApiClient.GetCompletionAsync(ContentId);
+        if (r.IsSuccess) _completion = r.Data;
+        _loading = false;
+        StateHasChanged();
+    }
+
+    static string ScoreColor(int s) => s >= 80 ? "#15803d" : s >= 50 ? "#d97706" : "#dc2626";
+}

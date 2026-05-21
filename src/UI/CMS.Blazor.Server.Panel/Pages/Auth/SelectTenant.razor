@@ -1,0 +1,64 @@
+@page "/select-tenant"
+@layout LoginLayout
+@attribute [AllowAnonymous]
+
+<PageTitle>Workspace Seç — CMS Management</PageTitle>
+
+@if (!AppState.Session.IsAuthenticated) { Nav.NavigateTo("/login"); return; }
+
+<div class="text-center mb-4">
+    <h6 class="fw-semibold mb-1">Hoş geldiniz</h6>
+    <small class="text-muted">@AppState.Session.Email</small>
+    <p class="text-muted small mt-2 mb-0">Bir workspace seçin</p>
+</div>
+
+@if (err is not null)
+{
+    <div class="alert alert-danger py-2 small mb-3">@err</div>
+}
+
+<div class="d-flex flex-column gap-2">
+    @foreach (var t in AppState.Session.Tenants)
+    {
+        <button class="btn btn-outline-primary text-start d-flex align-items-center gap-3 py-3 px-3"
+                @onclick="() => Pick(t.TenantId)" disabled="@busy">
+            <div class="rounded-2 bg-primary bg-opacity-10 d-flex align-items-center justify-content-center flex-shrink-0"
+                 style="width:40px;height:40px">
+                <span class="fw-bold text-primary">
+                    @(t.Name.Length > 0 ? char.ToUpper(t.Name[0]).ToString() : "T")
+                </span>
+            </div>
+            <div>
+                <div class="fw-medium">@t.Name</div>
+                <small class="text-muted">@t.TenantId.ToString()[..8]…</small>
+            </div>
+            @if (_picking == t.TenantId)
+            {
+                <span class="spinner-border spinner-border-sm text-primary ms-auto"></span>
+            }
+        </button>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public Guid? TenantId { get; set; }
+
+    private bool  busy;
+    private Guid? _picking;
+    private string? err;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        if (TenantId.HasValue && AppState.Session.Tenants.Any(t => t.TenantId == TenantId.Value))
+            await Pick(TenantId.Value);
+    }
+
+    private async Task Pick(Guid id)
+    {
+        busy = true; _picking = id; err = null; StateHasChanged();
+        var (ok, error) = await Auth.SelectTenantAsync(id);
+        if (!ok) { err = error; busy = false; _picking = null; StateHasChanged(); return; }
+        Nav.NavigateTo("/", forceLoad: false);
+    }
+}

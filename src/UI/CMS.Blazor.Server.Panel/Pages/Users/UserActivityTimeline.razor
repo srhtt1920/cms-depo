@@ -1,0 +1,586 @@
+﻿@page "/users/{UserId:guid}/activity"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Kullanıcı Aktivitesi — CMS</PageTitle>
+@if (!AppState.Session.Can("users.manage"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else
+{
+    <PageHeader Title="@($"Aktivite — {_user?.Email ?? UserId.ToString()}")">
+        <Actions>
+            <button class="btn btn-outline-secondary btn-sm"
+                    @onclick='() => Nav.NavigateTo("/users")'>
+                ← Kullanıcılara Dön
+            </button>
+            <button class="btn-ghost btn-icon" title="Yenile" @onclick="LoadAsync">
+                <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                    <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+                </svg>
+            </button>
+        </Actions>
+    </PageHeader>
+
+    <!-- Kullanıcı özet kartı -->
+    @if (_user is not null)
+    {
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body d-flex align-items-center gap-3 py-3">
+                <div class="avatar-circle bg-primary text-white d-flex align-items-center justify-content-center"
+                     style="width:48px;height:48px;border-radius:50%;font-size:18px;font-weight:700;flex-shrink:0">
+                    @(_user.DisplayName?.Substring(0, 1).ToUpper() ?? _user.Email.Substring(0, 1).ToUpper())
+                </div>
+                <div class="flex-fill">
+                    <div class="fw-semibold">@(_user.DisplayName ?? _user.Email)</div>
+                    <div class="text-muted small">@_user.Email</div>
+                    <div class="d-flex gap-2 mt-1 flex-wrap">
+                        @foreach (var role in _user.Roles)
+                        {
+                            <span class="badge bg-secondary" style="font-size:10px">@role</span>
+                        }
+                    </div>
+                </div>
+                <div class="text-end">
+                    <div class="small text-muted">Son Giriş</div>
+                    <div class="small fw-medium">
+                        @(_user.LastLogin?.ToString("dd MMM yyyy HH:mm") ?? "—")
+                    </div>
+                    <div class="mt-1">
+                        @if (_user.IsActive)
+                        {
+                            <span class="badge bg-success" style="font-size:10px">Aktif</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-danger" style="font-size:10px">Pasif</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Tab navigasyonu -->
+    <ul class="nav nav-tabs mb-4">
+        <li class="nav-item">
+            <button class="nav-link @(_tab == "timeline" ? "active" : "")"
+                    @onclick='() => _tab = "timeline"'>
+                📋 Aktivite Geçmişi
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_tab == "sessions" ? "active" : "")"
+                    @onclick='() => _tab = "sessions"'>
+                🔐 Oturumlar
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_tab == "tokens" ? "active" : "")"
+                    @onclick='() => _tab = "tokens"'>
+                🔑 API Tokenları
+            </button>
+        </li>
+    </ul>
+
+    @if (_tab == "timeline")
+    {
+        <!-- ── AKTİVİTE ZAMAN ÇİZELGESİ ──────────────────────────────── -->
+        <div class="row g-3">
+            <!-- Filtreler -->
+            <div class="col-12">
+                <div class="d-flex gap-2 flex-wrap align-items-center">
+                    <select class="form-select form-select-sm" style="width:160px"
+                            @bind="_logFilter">
+                        <option value="">Tüm İşlemler</option>
+                        <option value="content">İçerik</option>
+                        <option value="auth">Auth</option>
+                        <option value="users">Kullanıcı</option>
+                        <option value="roles">Rol</option>
+                    </select>
+                    <input type="date" class="form-control form-control-sm" style="width:160px"
+                           @bind="_logFrom" />
+                    <span class="text-muted small">—</span>
+                    <input type="date" class="form-control form-control-sm" style="width:160px"
+                           @bind="_logTo" />
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="LoadLogs">Filtrele</button>
+                </div>
+            </div>
+
+            <!-- Timeline -->
+            <div class="col-12 col-lg-8">
+                <div class="timeline">
+                    @if (!_logs.Any())
+                    {
+                        <div class="text-center text-muted py-5 small">
+                            Bu filtre için aktivite kaydı bulunamadı
+                        </div>
+                    }
+                    @{
+                        DateOnly? lastDate = null;
+                    }
+                    @foreach (var log in FilteredLogs)
+                    {
+                        var l = log;
+                        var d = DateOnly.FromDateTime(l.CreatedAt);
+                        if (d != lastDate)
+                        {
+                            lastDate = d;
+                            <div class="timeline-date">@l.CreatedAt.ToString("dd MMMM yyyy")</div>
+                        }
+                        <div class="timeline-item">
+                            <div class="timeline-dot" style="background:@ActionColor(l.Action)"></div>
+                            <div class="timeline-body">
+                                <div class="d-flex align-items-start justify-content-between gap-2">
+                                    <div>
+                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                            <span class="badge" style="font-size:9px;background:@ActionColor(l.Action);color:#fff">
+                                                @l.Action
+                                            </span>
+                                            <span class="small fw-medium">@l.EntityType</span>
+                                            @if (!string.IsNullOrEmpty(l.EntityId))
+                                            {
+                                                <code class="small" style="font-size:10px;color:var(--text-3)">
+                                                    #@l.EntityId[..Math.Min(8, l.EntityId.Length)]…
+                                                </code>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(l.Details))
+                                        {
+                                            <div class="text-muted" style="font-size:11px">@l.Details</div>
+                                        }
+                                        <div class="d-flex gap-3 mt-1">
+                                            <small class="text-muted" style="font-size:10px">
+                                                🌐 @l.IpAddress
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <small class="text-muted text-nowrap" style="font-size:10px">
+                                        @l.CreatedAt.ToString("HH:mm:ss")
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Özet istatistikler -->
+            <div class="col-12 col-lg-4">
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-header bg-transparent py-2 px-3">
+                        <span class="fw-semibold small">Aktivite Özeti</span>
+                    </div>
+                    <div class="card-body py-2 px-3">
+                        @foreach (var g in _logs.GroupBy(l => l.Action).OrderByDescending(g => g.Count()).Take(8))
+                        {
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <span class="badge" style="font-size:9px;background:@ActionColor(g.Key);color:#fff;min-width:70px">
+                                    @g.Key
+                                </span>
+                                <div class="flex-fill" style="height:4px;background:var(--border);border-radius:2px">
+                                    <div style="height:100%;width:@(Math.Min(100, g.Count() * 10))%;background:@ActionColor(g.Key);border-radius:2px"></div>
+                                </div>
+                                <span class="text-muted" style="font-size:11px;font-family:monospace">@g.Count()</span>
+                            </div>
+                        }
+                        @if (!_logs.Any())
+                        {
+                            <p class="text-muted small text-center py-2">Veri yok</p>
+                        }
+                    </div>
+                </div>
+
+                <!-- En çok etkilenen entity'ler -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-transparent py-2 px-3">
+                        <span class="fw-semibold small">Entity Türleri</span>
+                    </div>
+                    <div class="card-body py-2 px-3">
+                        @foreach (var g in _logs.GroupBy(l => l.EntityType).OrderByDescending(g => g.Count()).Take(6))
+                        {
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="small">@g.Key</span>
+                                <span class="badge bg-secondary" style="font-size:10px">@g.Count()</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else if (_tab == "sessions")
+    {
+        <!-- ── OTURUM YÖNETİMİ ─────────────────────────────────────────── -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                <span class="fw-semibold small">Aktif Oturumlar</span>
+                @if (_sessions.Any())
+                {
+                    <button class="btn btn-sm btn-outline-danger" style="font-size:11px"
+                            @onclick="RevokeAllSessions">
+                        Tümünü Sonlandır
+                    </button>
+                }
+            </div>
+            <div class="table-responsive">
+                <table class="cms-table mb-0">
+                    <thead>
+                        <tr>
+                            <th><div class="th-inner">Cihaz / IP</div></th>
+                            <th><div class="th-inner">Başlangıç</div></th>
+                            <th><div class="th-inner">Son Aktivite</div></th>
+                            <th><div class="th-inner">Durum</div></th>
+                            <th style="width:80px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in _sessions)
+                        {
+                            var sess = s;
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span style="font-size:18px">@DeviceIcon(s.UserAgent)</span>
+                                        <div>
+                                            <div style="font-size:12px;font-weight:500">@DeviceLabel(s.UserAgent)</div>
+                                            <div class="mono text-muted" style="font-size:10px">@s.IpAddress</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><small class="text-muted">@s.CreatedAt.ToString("dd MMM HH:mm")</small></td>
+                                <td><small class="text-muted">@s.LastUsedAt.ToString("dd MMM HH:mm")</small></td>
+                                <td>
+                                    @if (s.IsCurrent)
+                                    {
+                                        <span class="badge bg-success" style="font-size:10px">Mevcut</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary" style="font-size:10px">Aktif</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    @if (!s.IsCurrent)
+                                    {
+                                        <button class="btn btn-link btn-sm p-0 text-danger" style="font-size:11px"
+                                                @onclick="() => RevokeSession(sess)">
+                                            Sonlandır
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        @if (!_sessions.Any())
+                        {
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4 small">
+                                    Aktif oturum bulunamadı
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- ── API TOKEN YÖNETİMİ ──────────────────────────────────────── -->
+        @if (!string.IsNullOrEmpty(_newToken))
+        {
+            <div class="alert alert-success py-2 mb-3">
+                <div class="fw-semibold small mb-1">✓ Yeni Token Oluşturuldu — Yalnızca bir kez gösterilir!</div>
+                <div class="d-flex align-items-center gap-2">
+                    <code class="flex-fill" style="font-size:11px;word-break:break-all">@_newToken</code>
+                    <button class="btn btn-sm btn-outline-success" style="font-size:11px"
+                            @onclick="CopyToken">
+                        Kopyala
+                    </button>
+                </div>
+            </div>
+        }
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                <span class="fw-semibold small">API Tokenları</span>
+                <button class="btn btn-sm btn-primary" style="font-size:11px"
+                        @onclick="OpenCreateToken">
+                    + Yeni Token
+                </button>
+            </div>
+            <div class="table-responsive">
+                <table class="cms-table mb-0">
+                    <thead>
+                        <tr>
+                            <th><div class="th-inner">Token Adı</div></th>
+                            <th><div class="th-inner">Oluşturma</div></th>
+                            <th><div class="th-inner">Son Kullanım</div></th>
+                            <th><div class="th-inner">Geçerlilik</div></th>
+                            <th style="width:80px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var tok in _tokens)
+                        {
+                            var token = tok;
+                            var isExpired = tok.ExpiresAt.HasValue && tok.ExpiresAt.Value < DateTime.UtcNow;
+                            <tr class="@(isExpired ? "opacity-50" : "")">
+                                <td>
+                                    <div class="fw-medium" style="font-size:12px">@tok.Name</div>
+                                    <div class="mono text-muted" style="font-size:10px">
+                                        @tok.Prefix…
+                                    </div>
+                                </td>
+                                <td><small class="text-muted">@tok.CreatedAt.ToString("dd MMM yyyy")</small></td>
+                                <td>
+                                    <small class="text-muted">
+                                        @(tok.LastUsedAt?.ToString("dd MMM yyyy HH:mm") ?? "Hiç kullanılmadı")
+                                    </small>
+                                </td>
+                                <td>
+                                    @if (isExpired)
+                                    {
+                                        <span class="badge bg-danger" style="font-size:10px">Süresi Doldu</span>
+                                    }
+                                    else if (tok.ExpiresAt.HasValue)
+                                    {
+                                        <span class="badge bg-warning text-dark" style="font-size:10px">
+                                            @tok.ExpiresAt.Value.ToString("dd MMM yyyy")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success" style="font-size:10px">Sınırsız</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <button class="btn btn-link btn-sm p-0 text-danger" style="font-size:11px"
+                                            @onclick="() => RevokeToken(token)">
+                                        İptal Et
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                        @if (!_tokens.Any())
+                        {
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4 small">
+                                    API tokeni bulunamadı
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+<!-- Yeni Token Modal -->
+@if (_createTokenOpen)
+{
+    <div class="modal-backdrop-blur" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1040"
+         @onclick="() => _createTokenOpen = false"></div>
+    <div class="modal fade show d-block" tabindex="-1" style="z-index:1050">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-0 pb-1">
+                    <h6 class="modal-title fw-semibold">Yeni API Token Oluştur</h6>
+                    <button class="btn-close" @onclick="() => _createTokenOpen = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Token Adı *</label>
+                        <input class="form-control form-control-sm" @bind="_newTokenName"
+                               placeholder="ör: CI/CD Pipeline, Local Dev..." />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Geçerlilik Süresi</label>
+                        <select class="form-select form-select-sm" @bind="_newTokenExpiry">
+                            <option value="0">Sınırsız</option>
+                            <option value="30">30 Gün</option>
+                            <option value="90">90 Gün</option>
+                            <option value="365">1 Yıl</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _createTokenOpen = false">İptal</button>
+                    <button class="btn btn-sm btn-primary" @onclick="CreateToken">Oluştur</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .timeline {
+        position: relative;
+    }
+
+    .timeline-date {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        padding: 12px 0 6px;
+    }
+
+    .timeline-item {
+        display: flex;
+        gap: 12px;
+        padding-bottom: 12px;
+    }
+
+    .timeline-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        margin-top: 5px;
+    }
+
+    .timeline-body {
+        flex: 1;
+        background: var(--surface-1);
+        border: 1px solid var(--border);
+        border-radius: var(--r-md);
+        padding: 10px 14px;
+    }
+</style>
+
+@code {
+    [Parameter] public Guid UserId { get; set; }
+    string _search = "";
+
+    bool _loading = true;
+    string _tab = "timeline";
+    string _logFilter = "";
+    DateOnly? _logFrom, _logTo;
+
+    UserListDto? _user;
+    List<AuditLogDto> _logs = [];
+    List<SessionInfo> _sessions = [];
+    List<ApiTokenInfo> _tokens = [];
+
+    bool _createTokenOpen;
+    string _newTokenName = "";
+    int _newTokenExpiry = 30;
+    string? _newToken;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await PermSync.SyncIfNeededAsync();
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    async Task LoadAsync()
+    {
+        _loading = true;
+
+        // Load user
+        var users = await UserApiClient.GetUsersAsync();
+        if (users.IsSuccess)
+            _user = users.Data?.FirstOrDefault(u => u.Id == UserId);
+
+        await LoadLogs();
+
+        // Mock sessions (replace with real API)
+        _sessions =
+        [
+            new SessionInfo("Mozilla/5.0 Chrome Windows", "92.40.10.12", DateTime.UtcNow.AddHours(-1), DateTime.UtcNow.AddMinutes(-2), true),
+            new SessionInfo("Mozilla/5.0 Safari iOS", "185.22.10.30", DateTime.UtcNow.AddDays(-2), DateTime.UtcNow.AddDays(-1), false),
+        ];
+
+        // Mock tokens
+        _tokens =
+        [
+            new ApiTokenInfo("CI Pipeline", "cms_live_abc", DateTime.UtcNow.AddDays(-30), DateTime.UtcNow.AddHours(-5), null),
+            new ApiTokenInfo("Local Dev", "cms_live_xyz", DateTime.UtcNow.AddDays(-90), null, DateTime.UtcNow.AddDays(30)),
+        ];
+
+        _loading = false;
+    }
+
+    async Task LoadLogs()
+    {
+        var r = await AuditApiClient.GetAuditLogsAsync(userId: UserId, pageSize: 100);
+        if (r.IsSuccess && r.Data?.Items is not null)
+            _logs = r.Data.Items;
+    }
+
+    IEnumerable<AuditLogDto> FilteredLogs => _logs
+        .Where(l => string.IsNullOrEmpty(_logFilter) ||
+                    l.EntityType.Contains(_logFilter, StringComparison.OrdinalIgnoreCase) ||
+                    l.Action.Contains(_logFilter, StringComparison.OrdinalIgnoreCase))
+        .Where(l => _logFrom is null || DateOnly.FromDateTime(l.CreatedAt) >= _logFrom)
+        .Where(l => _logTo is null || DateOnly.FromDateTime(l.CreatedAt) <= _logTo);
+
+    static string ActionColor(string action) => action.ToLower() switch
+    {
+        var a when a.Contains("delete") || a.Contains("remove") => "#ef4444",
+        var a when a.Contains("create") || a.Contains("add") => "#22c55e",
+        var a when a.Contains("publish") => "#8b5cf6",
+        var a when a.Contains("login") || a.Contains("logout") => "#3b82f6",
+        _ => "#64748b",
+    };
+
+    void RevokeAllSessions() => _sessions = _sessions.Where(s => s.IsCurrent).ToList();
+    void RevokeSession(SessionInfo s) => _sessions.Remove(s);
+    void OpenCreateToken() { _createTokenOpen = true; _newTokenName = ""; _newToken = null; }
+    void CreateToken()
+    {
+        if (string.IsNullOrWhiteSpace(_newTokenName)) return;
+        _newToken = $"cms_live_{Guid.NewGuid():N}";
+        _tokens.Insert(0, new ApiTokenInfo(
+            _newTokenName, _newToken[..16],
+            DateTime.UtcNow, null,
+            _newTokenExpiry == 0 ? null : DateTime.UtcNow.AddDays(_newTokenExpiry)));
+        _createTokenOpen = false;
+    }
+    void RevokeToken(ApiTokenInfo t) => _tokens.Remove(t);
+    async Task CopyToken() => await JS.InvokeVoidAsync("navigator.clipboard.writeText", _newToken);
+
+    static string DeviceIcon(string ua) => ua.Contains("Mobile") || ua.Contains("iOS") ? "📱" : "💻";
+    static string DeviceLabel(string ua) => ua.Contains("iOS") || ua.Contains("Safari") ? "Safari (iOS)"
+        : ua.Contains("Chrome") ? "Chrome" : ua.Contains("Firefox") ? "Firefox" : "Browser";
+
+    sealed record SessionInfo(string UserAgent, string IpAddress, DateTime CreatedAt, DateTime LastUsedAt, bool IsCurrent);
+    sealed record ApiTokenInfo(string Name, string Prefix, DateTime CreatedAt, DateTime? LastUsedAt, DateTime? ExpiresAt);
+}

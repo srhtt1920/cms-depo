@@ -1,0 +1,223 @@
+﻿@page "/tenants/{TenantId:guid}/maintenance"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Bakım Modu — CMS</PageTitle>
+@if (!AppState.Session.Can("superadmin"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="Bakım Modu" Subtitle="Tenant erişim ve bakım ayarları">
+    <Actions>
+        <a href="/tenants/@TenantId" class="btn btn-ghost btn-sm">← Tenant Detayına Dön</a>
+    </Actions>
+</PageHeader>
+
+
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else
+{
+    <!-- Durum şeridi -->
+    <div class="card border-0 shadow-sm mb-3"
+         style="border-left:4px solid @(_on ? "#f59e0b" : "#22c55e")!important">
+        <div class="card-body p-4">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                <div class="d-flex align-items-center gap-3">
+                    <span style="font-size:2.5rem">@(_on ? "🔧" : "✅")</span>
+                    <div>
+                        <div class="fw-semibold">
+                            @(_on ? "Bakım Modu Aktif" : "Sistem Normal Çalışıyor")
+                        </div>
+                        <div class="text-muted small">
+                            @(_on
+                                                    ? "Kullanıcılar sisteme erişemiyor. Sadece whitelist admin'ler girebilir."
+                                                    : "Tüm kullanıcılar sisteme erişebilir.")
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span class="small fw-medium text-muted">@(_on ? "Bakım Aktif" : "Bakım Pasif")</span>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox"
+                           style="width:3rem;height:1.5rem;cursor:pointer"
+                           checked="@_on"
+                           @onchange="OnToggleAsync"
+                           disabled="@_busy"
+                           id="mainSwitch" />
+                    <label class="form-check-label" for="mainSwitch"></label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <div class="row g-3">
+        <!-- Ayarlar -->
+        <div class="col-12 col-lg-7">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <div class="small fw-semibold text-muted mb-4">BAKIM MESAJI</div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Başlık</label>
+                        <input @bind="_title" type="text" class="form-control form-control-sm"
+                               placeholder="ör: Sistemimiz Bakımda" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Açıklama</label>
+                        <textarea @bind="_message" class="form-control form-control-sm" rows="3"
+                                  placeholder="ör: Bakım çalışmaları nedeniyle geçici olarak kapalıyız."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Admin Whitelist (e-posta deseni)</label>
+                        <input @bind="_pattern" type="text" class="form-control form-control-sm"
+                               placeholder="ör: *@@company.com" />
+                        <div class="form-text" style="font-size:11px">
+                            Bu desene uyan adminler bakım modunda da erişebilir. Boş bırakılırsa sadece SuperAdmin girebilir.
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label small fw-medium">Tahmini Bitiş</label>
+                        <input @bind="_plannedEnd" type="datetime-local" class="form-control form-control-sm" />
+                        <div class="form-text" style="font-size:11px">İsteğe bağlı — kullanıcılara geri sayım gösterilir.</div>
+                    </div>
+
+                    <button class="btn btn-primary btn-sm" @onclick="SaveAsync" disabled="@_busy">
+                    @if (_busy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Ayarları Kaydet
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Önizleme -->
+        <div class="col-12 col-lg-5">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <div class="small fw-semibold text-muted mb-3">KULLANICI EKRANI ÖNİZLEME</div>
+                    <div class="rounded p-4 text-center"
+                         style="background:#1e1b4b;min-height:180px;
+                                        display:flex;flex-direction:column;align-items:center;justify-content:center">
+                        <div style="font-size:2rem;margin-bottom:10px">🔧</div>
+                        <div style="color:white;font-size:15px;font-weight:700;margin-bottom:6px">
+                            @(string.IsNullOrEmpty(_title) ? "Sistemimiz Bakımda" : _title)
+                        </div>
+                        <div style="color:#a5b4fc;font-size:12px;max-width:220px;line-height:1.5">
+                            @(string.IsNullOrEmpty(_message) ? "En kısa sürede geri döneceğiz." : _message)
+                        </div>
+                        @if (_plannedEnd.HasValue)
+                        {
+                            <div style="color:#c4b5fd;font-size:11px;margin-top:10px;opacity:.8">
+                                🕐 @_plannedEnd.Value.ToString("dd MMM HH:mm")'e kadar
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid TenantId { get; set; }
+
+    bool _on, _loading = true, _busy;
+    string? _title, _message, _pattern;
+    DateTime? _plannedEnd;
+    string _search = "";
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            // SuperAdminApiClient.GetTenantMaintenanceAsync döner TenantMaintenanceDto
+            var r = await SuperAdminApiClient.GetTenantMaintenanceAsync(TenantId);
+            if (r.IsSuccess && r.Data is { } m)
+            {
+                _on = m.IsMaintenanceMode;
+                _title = m.MaintenanceTitle;
+                _message = m.MaintenanceMessage;
+                _pattern = m.AllowedEmailPattern;
+                _plannedEnd = m.PlannedEndAt?.ToLocalTime();
+            }
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+
+    async Task OnToggleAsync(ChangeEventArgs e)
+    {
+        var on = (bool)e.Value!;
+        _busy = true;
+        try
+        {
+            // SetTenantMaintenanceAsync(tenantId, SetMaintenanceModeRequest)
+            var req = BuildRequest(on);
+            var r = await SuperAdminApiClient.SetTenantMaintenanceAsync(TenantId, req);
+            if (r.IsSuccess)
+            {
+                _on = on;
+                if (on) Toast.Warning("Bakım modu etkinleştirildi."); else Toast.Success("Bakım modu kapatıldı.");
+            }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _busy = false; }
+    }
+
+    async Task SaveAsync()
+    {
+        _busy = true;
+        try
+        {
+            var req = BuildRequest(_on);
+            var r = await SuperAdminApiClient.SetTenantMaintenanceAsync(TenantId, req);
+            if (r.IsSuccess) { Toast.Success("Bakım ayarları kaydedildi."); }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _busy = false; }
+    }
+
+    // SetMaintenanceModeRequest(bool IsMaintenanceMode, string? Title, string? Message, string? AllowedEmailPattern, DateTime? PlannedEndAt)
+    SetMaintenanceModeRequest BuildRequest(bool on) =>
+        new(on, _title, _message, _pattern,
+            _plannedEnd.HasValue ? _plannedEnd.Value.ToUniversalTime() : null);
+}

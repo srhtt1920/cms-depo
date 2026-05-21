@@ -1,0 +1,537 @@
+﻿@page "/tenants/{TenantId:guid}/settings"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Tenant Ayarları — CMS</PageTitle>
+@if (!Guard.IsSuperAdmin)
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="Tenant Ayarları" Subtitle="@_dto?.Name">
+    <Actions>
+        <a href="/tenants" class="btn btn-ghost btn-sm">← Tenant Listesine Dön</a>
+    </Actions>
+</PageHeader>
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger py-2 small">
+        @_error
+        <button class="btn btn-link btn-sm" @onclick="LoadAsync">Tekrar dene</button>
+    </div>
+}
+else if (_dto is not null)
+{
+
+
+    <!-- Tab navigasyon -->
+    <ul class="nav nav-tabs mb-4" style="border-bottom-color:var(--border)">
+        @foreach (var tab in new[] { "genel", "diller", "bakim", "kullanicilar", "tehlike" })
+        {
+            <li class="nav-item">
+                <button class="nav-link @(_activeTab == tab ? "active" : "")"
+                        style="font-size:13px"
+                        @onclick="() => _activeTab = tab">
+                    @TabLabel(tab)
+                </button>
+            </li>
+        }
+    </ul>
+
+    <!-- GENEL -->
+    @if (_activeTab == "genel")
+    {
+        <div class="row g-3">
+            <div class="col-12 col-lg-6">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body p-4">
+                        <h6 class="fw-semibold mb-4">Genel Bilgiler</h6>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-medium">Tenant Adı</label>
+                            <input @bind="_editName" type="text" class="form-control form-control-sm" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-medium">Tenant ID</label>
+                            <input type="text" class="form-control form-control-sm bg-light" value="@TenantId" readonly />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-medium">Varsayılan Dil</label>
+                            <input type="text" class="form-control form-control-sm bg-light" value="@_dto.DefaultLanguageCode" readonly />
+                        </div>
+
+                        <!-- Durum badge -->
+                        <div class="d-flex align-items-center gap-2 mb-4">
+                            <span class="text-muted small">Durum:</span>
+                            @if (_detail?.IsActive == true)
+                            {
+                                <span class="badge bg-success">Aktif</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-danger">Pasif</span>
+                            }
+                        </div>
+
+                        <button class="btn btn-primary btn-sm" @onclick="SaveNameAsync" disabled="@_saving">
+                            @if (_saving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Kaydet
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-6">
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body p-4">
+                        <h6 class="fw-semibold mb-3">İstatistikler</h6>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <div class="ap-kpi" style="border-left-color:var(--accent)">
+                                    <div class="ap-kpi-val">@(_detail?.UserCount ?? 0)</div>
+                                    <div class="ap-kpi-label">Kullanıcı</div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="ap-kpi" style="border-left-color:#22c55e">
+                                    <div class="ap-kpi-val">@(_detail?.ContentCount ?? 0)</div>
+                                    <div class="ap-kpi-label">İçerik</div>
+                                </div>
+                            </div>
+                        </div>
+                        @if (_detail?.CreatedAt is not null)
+                        {
+                            <div class="small text-muted mt-3">
+                                Oluşturulma: @_detail.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")
+                            </div>
+                        }
+                        @if (_detail?.LastActivityAt is not null)
+                        {
+                            <div class="small text-muted">
+                                Son aktivite: @_detail.LastActivityAt.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm")
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- DİLLER -->
+    @if (_activeTab == "diller")
+    {
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <h6 class="fw-semibold mb-4">Dil Yönetimi</h6>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Desteklenen Diller</label>
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        @foreach (var lang in _dto.SupportedLanguages)
+                        {
+                            <div class="d-flex align-items-center gap-1 px-2 py-1 rounded"
+                                 style="background:var(--surface-2);border:1px solid var(--border)">
+                                <span class="fw-medium" style="font-size:13px">@lang.LanguageCode.ToUpper()</span>
+                                @if (lang.IsDefault)
+                                {
+                                    <span class="badge bg-primary ms-1" style="font-size:9px">Varsayılan</span>
+                                }
+                                @if (lang.IsFallback)
+                                {
+                                    <span class="badge bg-info ms-1" style="font-size:9px">Fallback</span>
+                                }
+                                @if (!lang.IsDefault)
+                                {
+                                    <button class="btn btn-ghost btn-sm p-0 ms-1" style="font-size:11px;line-height:1"
+                                            @onclick="() => RemoveLang(lang.LanguageCode)">
+                                        ✕
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-end gap-2 mb-4">
+                    <div class="flex-fill" style="max-width:200px">
+                        <label class="form-label small fw-medium">Yeni Dil Ekle</label>
+                        <select class="form-select form-select-sm" @bind="_newLangCode">
+                            <option value="">— Seçin —</option>
+                            @foreach (var l in AvailableLanguages.Where(l => !_dto.SupportedLanguages.Any(s => s.LanguageCode == l)))
+                            {
+                                <option value="@l">@l.ToUpper()</option>
+                            }
+                        </select>
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm" @onclick="AddLang" disabled="@string.IsNullOrEmpty(_newLangCode)">
+                        + Ekle
+                    </button>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Varsayılan Dil</label>
+                    <select class="form-select form-select-sm" style="max-width:200px" @bind="_defaultLangCode">
+                        @foreach (var lang in _dto.SupportedLanguages)
+                        {
+                            <option value="@lang.LanguageCode">@lang.LanguageCode.ToUpper()</option>
+                        }
+                    </select>
+                </div>
+
+                <button class="btn btn-primary btn-sm" @onclick="SaveLanguagesAsync" disabled="@_saving">
+                    @if (_saving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Dil Ayarlarını Kaydet
+                </button>
+            </div>
+        </div>
+    }
+
+    <!-- BAKIM -->
+    @if (_activeTab == "bakim")
+    {
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center justify-content-between mb-4">
+                    <h6 class="fw-semibold mb-0">Bakım Modu</h6>
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               id="maintenanceToggle"
+                               checked="@_maintenanceOn"
+                               @onchange="e => _maintenanceOn = (bool)e.Value!" />
+                        <label class="form-check-label fw-medium @(_maintenanceOn ? "text-danger" : "")"
+                               for="maintenanceToggle">
+                            @(_maintenanceOn ? "Aktif" : "Pasif")
+                        </label>
+                    </div>
+                </div>
+
+                @if (_maintenanceOn)
+                {
+                    <div class="alert alert-warning py-2 small mb-3">
+                        ⚠️ Bakım modu aktifken tenant kullanıcıları siteye erişemez.
+                    </div>
+                }
+
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Başlık</label>
+                    <input @bind="_maintenanceTitle" type="text" class="form-control form-control-sm"
+                           placeholder="Bakım Çalışması" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Mesaj</label>
+                    <textarea @bind="_maintenanceMsg" class="form-control form-control-sm" rows="3"
+                              placeholder="Sistemimiz şu an bakım nedeniyle geçici olarak kapalıdır..."></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">İzin Verilen E-posta Deseni</label>
+                    <input @bind="_allowedPattern" type="text" class="form-control form-control-sm"
+                           placeholder="örn: admin@@example.com veya *@@example.com" />
+                    <div class="form-text text-muted">Bu desene uyan adminler bakım modunda da erişebilir.</div>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label small fw-medium">Planlanan Bitiş</label>
+                    <input @bind="_plannedEnd" type="datetime-local" class="form-control form-control-sm"
+                           style="max-width:240px" />
+                </div>
+
+                <button class="btn btn-warning btn-sm" @onclick="SaveMaintenanceAsync" disabled="@_saving">
+                    @if (_saving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Bakım Ayarlarını Uygula
+                </button>
+            </div>
+        </div>
+    }
+
+    <!-- KULLANICILAR -->
+    @if (_activeTab == "kullanicilar" && _detail is not null)
+    {
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent py-2 px-3">
+                <span class="fw-semibold small">Tenant Kullanıcıları (@_detail.Users.Count)</span>
+            </div>
+            <div class="card-body p-0">
+                <table class="cms-table mb-0">
+                    <thead>
+                        <tr>
+                            <th><div class="th-inner">E-posta</div></th>
+                            <th><div class="th-inner">Roller</div></th>
+                            <th><div class="th-inner">Durum</div></th>
+                            <th><div class="th-inner">Son Giriş</div></th>
+                            <th style="width:80px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in _detail.Users)
+                        {
+                            <tr>
+                                <td>
+                                    <div style="font-size:13px">@u.Email</div>
+                                    @if (!string.IsNullOrEmpty(u.DisplayName))
+                                    {
+                                        <div class="text-muted" style="font-size:11px">@u.DisplayName</div>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-1">
+                                        @foreach (var r in u.Roles)
+                                        {
+                                            <span class="badge bg-light text-dark border" style="font-size:9px">@r</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    @if (u.IsActive)
+                                    {
+                                        <span class="badge bg-success" style="font-size:10px">Aktif</span>
+                                    }
+                                    else
+                                    {
+
+                                        <span class="badge bg-danger" style="font-size:10px">Pasif</span>
+                                    }
+                                </td>
+                                <td class="small text-muted">
+                                    @(u.LastLogin?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")
+                                </td>
+                                <td>
+                                    <button class="btn btn-outline-danger btn-sm" style="font-size:10px"
+                                            @onclick="() => RemoveUserAsync(u.UserId)">
+                                        Kaldır
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    <!-- TEHLİKE -->
+    @if (_activeTab == "tehlike")
+    {
+        <div class="card border border-danger shadow-sm">
+            <div class="card-body p-4">
+                <h6 class="fw-semibold text-danger mb-4">⚠️ Tehlikeli İşlemler</h6>
+
+                <div class="d-flex align-items-center justify-content-between p-3 rounded mb-3"
+                     style="background:#fef2f2;border:1px solid #fecaca">
+                    <div>
+                        <div class="fw-medium small">Tenant'ı Devre Dışı Bırak</div>
+                        <div class="small text-muted">Tenant pasif hale gelir. Kullanıcılar giriş yapamaz.</div>
+                    </div>
+                    <button class="btn btn-outline-danger btn-sm" @onclick="() => _confirmDeactivate = true">
+                        Devre Dışı Bırak
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        @if (_confirmDeactivate)
+        {
+            <div class="modal-backdrop-blur" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1040"
+                 @onclick="() => _confirmDeactivate = false"></div>
+            <div class="modal fade show d-block" tabindex="-1" style="z-index:1050">
+                <div class="modal-dialog modal-dialog-centered modal-sm">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-body p-4 text-center">
+                            <div style="font-size:36px;margin-bottom:12px">⚠️</div>
+                            <h6 class="fw-semibold mb-2">Tenant'ı Devre Dışı Bırak</h6>
+                            <p class="small text-muted mb-3">Bu işlem tenant kullanıcılarının sisteme girişini engelleyecektir.</p>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-outline-secondary btn-sm flex-fill"
+                                        @onclick="() => _confirmDeactivate = false">
+                                    İptal
+                                </button>
+                                <button class="btn btn-danger btn-sm flex-fill"
+                                        @onclick="DeactivateAsync" disabled="@_saving">
+                                    @if (_saving)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1"></span>
+                                    }
+                                    Onayla
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+}
+
+@code {
+    [Parameter] public Guid TenantId { get; set; }
+    string _search = "";
+
+    TenantSettingsDto? _dto;
+    TenantDetailDto? _detail;
+    string _activeTab = "genel";
+    string _editName = "";
+    string _defaultLangCode = "";
+    string _newLangCode = "";
+
+    bool _maintenanceOn;
+    string? _maintenanceTitle;
+    string? _maintenanceMsg;
+    string? _allowedPattern;
+    DateTime? _plannedEnd;
+
+    bool _loading = true;
+    bool _saving;
+    bool _confirmDeactivate;
+    string? _error;
+
+    static readonly List<string> AvailableLanguages = ["tr", "en", "de", "fr", "es", "ar", "ru", "zh"];
+
+    static string TabLabel(string t) => t switch
+    {
+        "diller" => "🌐 Diller",
+        "bakim" => "🔧 Bakım",
+        "kullanicilar" => "👥 Kullanıcılar",
+        "tehlike" => "⚠️ Tehlike",
+        _ => "⚙️ Genel"
+    };
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        _loading = true; _error = null;
+        StateHasChanged();
+        try
+        {
+            var r1 = await TenantApiClient.GetTenantSettingsAsync(TenantId);
+            if (!r1.IsSuccess) { _error = r1.Error!.Message; return; }
+            _dto = r1.Data!;
+            _editName = _dto.Name;
+            _defaultLangCode = _dto.DefaultLanguageCode;
+
+            var r2 = await SuperAdminApiClient.GetTenantDetailAsync(TenantId);
+            if (r2.IsSuccess) _detail = r2.Data;
+
+            if (_detail?.Maintenance is not null)
+            {
+                _maintenanceOn = _detail.Maintenance.IsMaintenanceMode;
+                _maintenanceTitle = _detail.Maintenance.MaintenanceTitle;
+                _maintenanceMsg = _detail.Maintenance.MaintenanceMessage;
+                _allowedPattern = _detail.Maintenance.AllowedEmailPattern;
+                _plannedEnd = _detail.Maintenance.PlannedEndAt?.ToLocalTime();
+            }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _loading = false; }
+    }
+
+    async Task SaveNameAsync()
+    {
+        _saving = true;
+        try
+        {
+            var r = await TenantApiClient.UpdateTenantAsync(TenantId, new UpdateTenantNameRequest(_editName));
+            Toast.Error(r.IsSuccess ? "Tenant adı güncellendi." : r.Error!.Message);
+        }
+        finally { _saving = false; }
+    }
+
+    async Task SaveLanguagesAsync()
+    {
+        _saving = true;
+        try
+        {
+            var langs = _dto!.SupportedLanguages.Select(l => l.LanguageCode).ToList();
+            var r = await TenantApiClient.UpdateTenantLanguagesAsync(TenantId, new UpdateLanguagesApiRequest(langs, _defaultLangCode));
+            Toast.Error(r.IsSuccess ? "Dil ayarları kaydedildi." : r.Error!.Message);
+        }
+        finally { _saving = false; }
+    }
+
+    async Task SaveMaintenanceAsync()
+    {
+        _saving = true;
+        try
+        {
+            var req = new SetMaintenanceModeRequest(_maintenanceOn, _maintenanceTitle, _maintenanceMsg, _allowedPattern, _plannedEnd?.ToUniversalTime());
+            var r = await SuperAdminApiClient.SetTenantMaintenanceAsync(TenantId, req);
+            Toast.Error(r.IsSuccess ? "Bakım ayarları uygulandı." : r.Error!.Message);
+        }
+        finally { _saving = false; }
+    }
+
+    async Task DeactivateAsync()
+    {
+        _saving = true;
+        try
+        {
+            var r = await TenantApiClient.DeactivateTenantAsync(TenantId);
+            Toast.Error(r.IsSuccess ? "Tenant devre dışı bırakıldı." : r.Error!.Message);
+            _confirmDeactivate = false;
+            if (r.IsSuccess) await LoadAsync();
+        }
+        finally { _saving = false; }
+    }
+
+    void AddLang()
+    {
+        if (string.IsNullOrEmpty(_newLangCode) || _dto is null) return;
+        if (!_dto.SupportedLanguages.Any(l => l.LanguageCode == _newLangCode))
+        {
+            var updated = _dto.SupportedLanguages.ToList();
+            updated.Add(new SupportedLanguageDto(_newLangCode, false, false));
+            _dto = _dto with { SupportedLanguages = updated };
+        }
+        _newLangCode = "";
+    }
+
+    void RemoveLang(string code)
+    {
+        if (_dto is null) return;
+        var updated = _dto.SupportedLanguages.Where(l => l.LanguageCode != code).ToList();
+        _dto = _dto with { SupportedLanguages = updated };
+    }
+
+    async Task RemoveUserAsync(Guid userId)
+    {
+        var r = await SuperAdminApiClient.RemoveUserFromTenantAsync(TenantId, userId);
+        Toast.Error(r.IsSuccess ? "Kullanıcı tenant'tan kaldırıldı." : r.Error!.Message);
+        if (r.IsSuccess) await LoadAsync();
+    }
+}

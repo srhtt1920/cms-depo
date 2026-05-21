@@ -1,0 +1,33 @@
+<div class="dropdown">
+    <button class="btn btn-sm btn-ghost dropdown-toggle px-2" type="button"
+            data-bs-toggle="dropdown" title="Menü teması">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M0 1.5A1.5 1.5 0 0 1 1.5 0h13A1.5 1.5 0 0 1 16 1.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 0 14.5v-13zM1.5 1a.5.5 0 0 0-.5.5V5h5V1H1.5zM6 1v4h4V1H6zm5 0v4h4V1.5a.5.5 0 0 0-.5-.5H11zm4 5h-4v4h4V6zm0 5h-4v4h3.5a.5.5 0 0 0 .5-.5V11zm-5 4v-4H6v4h4zm-5 0v-4H1v3.5a.5.5 0 0 0 .5.5H5zm-4-5h4V6H1v4z"/>
+        </svg>
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end" style="min-width:140px;font-size:.85rem">
+        @foreach (var m in Menus)
+        {
+            <li>
+                <button class="dropdown-item d-flex align-items-center gap-2
+                               @(AppState.Preferences.MenuTheme == m.Key ? "active" : "")"
+                        @onclick="() => Set(m.Key)">
+                    <span class="rounded-1 d-inline-block flex-shrink-0"
+                          style="width:12px;height:12px;background:@m.Color"></span>
+                    @m.Label
+                </button>
+            </li>
+        }
+    </ul>
+</div>
+
+@code {
+    record MenuOpt(string Key, string Label, string Color);
+    static readonly MenuOpt[] Menus =
+    [
+        new("dark",    "Koyu",    "#1e2230"),
+        new("light",   "Açık",    "#f8f9fa"),
+        new("colored", "Renkli",  "#0d6efd"),
+    ];
+    private async Task Set(string v) => await AppState.SetMenuThemeAsync(v);
+}

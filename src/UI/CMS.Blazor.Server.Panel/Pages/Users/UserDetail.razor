@@ -1,0 +1,504 @@
+@page "/users/{UserId:guid}"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Kullanıcı Detayı — CMS</PageTitle>
+@if (!AppState.Session.Can("users.manage"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="@(_user?.DisplayName ?? _user?.Email ?? "Kullanıcı")" Subtitle="Kullanıcı detayı ve yönetim">
+    <Actions>
+        <a href="/users" class="btn btn-ghost btn-sm">← Kullanıcılara Dön</a>
+    </Actions>
+</PageHeader>
+
+
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger py-2 small">
+        @_error <button class="btn btn-link btn-sm" @onclick="LoadAsync">Tekrar dene</button>
+    </div>
+}
+else if (_user is not null)
+{
+    <div class="row g-3">
+        <!-- Sol: Profil kartı -->
+        <div class="col-12 col-lg-4">
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body p-4 text-center">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center fw-bold
+                                    text-white mx-auto mb-3"
+                         style="width:72px;height:72px;font-size:1.8rem;background:var(--accent)">
+                        @AvatarLetter
+                    </div>
+                    <div class="fw-semibold" style="font-size:15px">
+                        @(_user.DisplayName ?? _user.Email)
+                    </div>
+                    <div class="text-muted small mb-3">@_user.Email</div>
+                    <div class="d-flex justify-content-center gap-1 flex-wrap mb-3">
+                        @foreach (var role in _user.Roles)
+                        {
+                            <span class="badge" style="background:var(--accent);font-size:10px">@role</span>
+                        }
+                    </div>
+                    <span class="badge @(_user.IsActive ? "bg-success" : "bg-danger")">
+                        @(_user.IsActive ? "Aktif" : "Pasif")
+                    </span>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body p-3">
+                    <div class="small fw-semibold text-muted mb-3">HESAP BİLGİLERİ</div>
+                    <div class="d-flex justify-content-between py-2 border-bottom">
+                        <span class="small text-muted">Son Giriş</span>
+                        <span class="small fw-medium">
+                            @(_user.LastLogin?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "—")
+                        </span>
+                    </div>
+                    <div class="d-flex justify-content-between py-2 border-bottom">
+                        <span class="small text-muted">İzin Ver.</span>
+                        <span class="small">v@(_user.PermissionVersion)</span>
+                    </div>
+                    <div class="d-flex justify-content-between py-2">
+                        <span class="small text-muted">Kullanıcı ID</span>
+                        <code style="font-size:9px">@UserId.ToString()[..8]…</code>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm" style="border:1px solid #ef4444!important">
+                <div class="card-body p-3">
+                    <div class="small fw-semibold text-danger mb-3">⚠️ TEHLİKELİ BÖLGE</div>
+                    @if (_user.IsActive)
+                    {
+                        <button class="btn btn-outline-danger btn-sm w-100"
+                                @onclick="() => _confirmDeact = true" disabled="@_busy">
+                            Hesabı Devre Dışı Bırak
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-outline-success btn-sm w-100"
+                                @onclick="ActivateAsync" disabled="@_busy">
+                            @if (_busy)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Hesabı Etkinleştir
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Sağ: Sekmeler -->
+        <div class="col-12 col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-transparent pt-3 pb-0 px-3">
+                    <ul class="nav nav-tabs border-0 card-header-tabs">
+                        @foreach (var t in new[] { "Roller", "Aktivite" })
+                        {
+                            var tab = t;
+                            <li class="nav-item">
+                                <button class="nav-link @(_tab == tab ? "active" : "")"
+                                        style="font-size:13px" @onclick="() => SetTab(tab)">
+                                    @tab
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                </div>
+                <div class="card-body p-4">
+
+                    @if (_tab == "Roller")
+                    {
+                        <div class="small fw-semibold text-muted mb-2">MEVCUT ROLLER</div>
+                        <div class="d-flex flex-wrap gap-2 mb-4">
+                            @if (!_user.Roles.Any())
+                            {
+                                <span class="text-muted small">Atanmış rol yok.</span>
+                            }
+                            @foreach (var r in _user.Roles)
+                            {
+                                <span class="badge d-flex align-items-center gap-1"
+                                      style="background:var(--accent);font-size:11px;padding:6px 10px">@r</span>
+                            }
+                        </div>
+
+                        <hr />
+                        <div class="small fw-semibold text-muted mb-3">ROL GÜNCELLE</div>
+                        @if (_roles is null)
+                        {
+                            <div class="small text-muted">Yükleniyor...</div>
+                        }
+                        else
+                        {
+                            <div class="row g-2 mb-3">
+                                @foreach (var role in _roles)
+                                {
+                                    var rid = role.Id;
+                                    var sel = _selectedRoleIds.Contains(rid);
+                                    <div class="col-6 col-md-4">
+                                        <label class="d-flex align-items-center gap-2 p-2 rounded"
+                                               style="border:1px solid var(--border);cursor:pointer;
+                                                                      background:@(sel ? "var(--accent-soft,rgba(99,102,241,.08))" : "transparent")">
+                                            <input type="checkbox" class="form-check-input"
+                                                   checked="@sel"
+                                                   @onchange="e => ToggleRole(rid, (bool)e.Value!)" />
+                                            <span style="font-size:12px">@role.Name</span>
+                                        </label>
+                                    </div>
+                                }
+                            </div>
+                            <button class="btn btn-primary btn-sm" @onclick="SaveRolesAsync" disabled="@_busy">
+                                @if (_busy)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                Rolleri Kaydet
+                            </button>
+                        }
+                    }
+
+                    @if (_tab == "Aktivite")
+                    {
+                        @if (_actLoading)
+                        {
+                            <div class="text-center py-4">
+                                <div class="spinner-border spinner-border-sm" style="color:var(--accent)"></div>
+                            </div>
+                        }
+                        else if (_activity is null || !_activity.Items.Any())
+                        {
+                            <div class="text-center py-5 text-muted small">Aktivite kaydı bulunamadı.</div>
+                        }
+                        else
+                        {
+                            <div style="max-height:420px;overflow-y:auto">
+                                @foreach (var act in _activity.Items)
+                                {
+                                    <div class="d-flex gap-3 mb-3">
+                                        <div class="flex-shrink-0 d-flex align-items-center justify-content-center rounded-circle"
+                                             style="width:32px;height:32px;background:@act.Color;font-size:14px">
+                                            @act.Icon
+                                        </div>
+                                        <div class="flex-fill">
+                                            <div style="font-size:13px;font-weight:500">@act.Action</div>
+                                            <div class="small text-muted">
+                                                @act.EntityType
+                                                @if (act.EntityId is not null)
+                                                {
+                                                    <span> · <code style="font-size:9px">@act.EntityId[..Math.Min(8, act.EntityId.Length)]…</code></span>
+                                                }
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(act.Details))
+                                            {
+                                                <div style="font-size:11px;color:var(--text-3)">@act.Details</div>
+                                            }
+                                        </div>
+                                        <div class="text-muted" style="font-size:11px;white-space:nowrap">
+                                            @act.OccurredAt.ToLocalTime().ToString("dd MMM HH:mm")
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_confirmDeact)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1040" @onclick="() => _confirmDeact = false"></div>
+    <div class="modal fade show d-block" tabindex="-1" style="z-index:1050">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-0 pb-1">
+                    <h6 class="modal-title fw-semibold text-danger">Hesabı Devre Dışı Bırak</h6>
+                    <button class="btn-close btn-close-sm" @onclick="() => _confirmDeact = false"></button>
+                </div>
+                <div class="modal-body py-2 small">
+                    <strong>@_user?.Email</strong> kullanıcısı sisteme giremeyecek.
+                </div>
+                <div class="modal-footer border-0 pt-1 gap-2">
+                    <button class="btn btn-sm btn-ghost" @onclick="() => _confirmDeact = false">İptal</button>
+                    <button class="btn btn-sm btn-danger" @onclick="DeactivateAsync" disabled="@_busy">
+                        @if (_busy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Devre Dışı Bırak
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+@* ── Üyelikler Sekmesi ── *@
+@if (_tab == "Üyelikler")
+{
+    @if (_memberships is null)
+    {
+        <div class="text-center py-4">
+            <div class="spinner-border spinner-border-sm" style="color:var(--accent)"></div>
+        </div>
+    }
+    else if (!_memberships.Any())
+    {
+        <div class="text-center py-5 text-muted small">Bu kullanıcı herhangi bir tenant'a üye değil.</div>
+    }
+    else
+    {
+        @foreach (var mem in _memberships)
+        {
+            var m = mem;
+            <div class="d-flex align-items-center gap-3 p-3 mb-2 rounded"
+                 style="border:1px solid var(--border);background:var(--surface-2)">
+                <div class="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white"
+                     style="width:36px;height:36px;font-size:14px;flex-shrink:0;background:var(--accent)">
+                    @m.TenantName[..1].ToUpper()
+                </div>
+                <div class="flex-fill">
+                    <div class="fw-medium" style="font-size:13px">@m.TenantName</div>
+                    <div class="d-flex gap-1 flex-wrap mt-1">
+                        @foreach (var role in m.Roles)
+                        {
+                            <span class="badge bg-light text-dark" style="font-size:9px">@role</span>
+                        }
+                    </div>
+                </div>
+                <div class="text-end flex-shrink-0">
+                    <span class="badge @MembershipBadge(m.Status)" style="font-size:9px">@MembershipLabel(m.Status)</span>
+                    @if (m.IsDefaultTenant)
+                    {
+                        <div class="text-muted mt-1" style="font-size:10px">🏠 Varsayılan</div>
+                    }
+                </div>
+                @if (AppState.Session.Can("users.manage"))
+                {
+                    <div>
+                        @if (m.Status == MembershipStatus.Active)
+                        {
+                            <button class="btn btn-sm btn-outline-warning" style="font-size:10px"
+                                    @onclick="() => SuspendMembershipAsync(m)">
+                                ⏸
+                            </button>
+                        }
+                        else if (m.Status == MembershipStatus.Suspended)
+                        {
+                            <button class="btn btn-sm btn-outline-success" style="font-size:10px"
+                                    @onclick="() => ActivateMembershipAsync(m)">
+                                ▶
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    }
+}
+
+@code {
+
+    [Parameter] public Guid UserId { get; set; }
+
+    UserListDto? _user;
+    UserActivityPageDto? _activity;
+    List<RoleListDto>? _roles;
+    HashSet<Guid> _selectedRoleIds = [];
+
+    string _search = "";
+    string _tab = "Roller";
+    bool _loading = true, _actLoading, _busy, _confirmDeact;
+    string? _error;
+
+    string AvatarLetter => (_user?.DisplayName ?? _user?.Email ?? "?")[..1].ToUpper();
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        _loading = true; _error = null;
+        StateHasChanged();
+        try
+        {
+            // GetUserByIdAsync doğrudan kullanıcıyı döner
+            var r = await UserApiClient.GetUserByIdAsync(UserId);
+            if (!r.IsSuccess) { _error = r.Error!.Message; return; }
+            _user = r.Data!;
+
+            // Rolleri yükle
+            var rr = await RoleApiClient.GetRolesAsync();
+            if (rr.IsSuccess)
+            {
+                _roles = rr.Data!;
+                _selectedRoleIds = _roles
+                    .Where(ro => _user.Roles.Contains(ro.Name))
+                    .Select(ro => ro.Id)
+                    .ToHashSet();
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    async Task SetTab(string tab)
+    {
+        _tab = tab;
+        if (tab == "Aktivite" && _activity is null)
+        {
+            _actLoading = true;
+            try
+            {
+                var r = await UserApiClient.GetUserActivityAsync(UserId);
+                if (r.IsSuccess) _activity = r.Data;
+            }
+            catch { }
+            finally { _actLoading = false; }
+        }
+        if (tab == "Üyelikler" && _memberships is null)
+            await LoadMembershipsAsync();
+    }
+
+    void ToggleRole(Guid id, bool on) { if (on) _selectedRoleIds.Add(id); else _selectedRoleIds.Remove(id); }
+
+    async Task SaveRolesAsync()
+    {
+        _busy = true;
+        try
+        {
+            // UpdateUserRolesAsync rol id listesini alır
+            var req = new UpdateRolesApiRequest(_selectedRoleIds.ToList());
+            var r = await UserApiClient.UpdateUserRolesAsync(UserId, req);
+            if (r.IsSuccess) { Toast.Success("Roller güncellendi."); await LoadAsync(); }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _busy = false; }
+    }
+
+    async Task DeactivateAsync()
+    {
+        _busy = true; _confirmDeact = false;
+        try
+        {
+            // SetUserActiveAsync(userId, isActive)
+            var r = await UserApiClient.SetUserActiveAsync(UserId, false);
+            if (r.IsSuccess) { Toast.Warning("Hesap devre dışı bırakıldı."); await LoadAsync(); }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _busy = false; }
+    }
+
+    async Task ActivateAsync()
+    {
+        _busy = true;
+        try
+        {
+            var r = await UserApiClient.SetUserActiveAsync(UserId, true);
+            if (r.IsSuccess) { Toast.Success("Hesap etkinleştirildi."); await LoadAsync(); }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _busy = false; }
+    }
+
+    // ── Membership ──────────────────────────────────────────────────────────
+    List<UserTenantMembershipDto>? _memberships;
+
+    async Task LoadMembershipsAsync()
+    {
+        try
+        {
+            var r = await InviteApiClient.GetUserTenantsAsync(UserId);
+            _memberships = r.IsSuccess ? r.Data ?? [] : [];
+        }
+        catch { _memberships = []; }
+    }
+
+    async Task SuspendMembershipAsync(UserTenantMembershipDto m)
+    {
+        _busy = true;
+        try
+        {
+            var r = await InviteApiClient.UpdateMembershipStatusAsync(UserId, m.TenantId,
+                new UpdateMembershipStatusRequest(MembershipStatus.Suspended, "Admin tarafından askıya alındı"));
+            if (r.IsSuccess) { Toast.Warning($"{m.TenantName} üyeligi askiya alindi."); await LoadMembershipsAsync(); }
+            else Toast.Error(r.Error?.Message ?? "Islem basarisiz.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _busy = false; }
+    }
+
+    async Task ActivateMembershipAsync(UserTenantMembershipDto m)
+    {
+        _busy = true;
+        try
+        {
+            var r = await InviteApiClient.UpdateMembershipStatusAsync(UserId, m.TenantId,
+                new UpdateMembershipStatusRequest(MembershipStatus.Active));
+            if (r.IsSuccess) { Toast.Success($"{m.TenantName} uyeligi aktiflestirildi."); await LoadMembershipsAsync(); }
+            else Toast.Error(r.Error?.Message ?? "Islem basarisiz.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _busy = false; }
+    }
+
+    static string MembershipBadge(MembershipStatus s) => s switch
+    {
+        MembershipStatus.Active => "bg-success",
+        MembershipStatus.PendingInvite => "bg-warning text-dark",
+        MembershipStatus.Suspended => "bg-danger",
+        MembershipStatus.Removed => "bg-secondary",
+        _ => "bg-light text-dark"
+    };
+
+    static string MembershipLabel(MembershipStatus s) => s switch
+    {
+        MembershipStatus.Active => "Aktif",
+        MembershipStatus.PendingInvite => "Davet Bekliyor",
+        MembershipStatus.Suspended => "Askida",
+        MembershipStatus.Removed => "Kaldirildi",
+        _ => s.ToString()
+    };
+
+}

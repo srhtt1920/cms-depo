@@ -1,0 +1,34 @@
+@if (AppState.Session.Tenants.Count > 1)
+{
+    <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                type="button" data-bs-toggle="dropdown">
+            @AppState.Session.CurrentTenantName
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+            @foreach (var t in AppState.Session.Tenants)
+            {
+                <li>
+                    <button class="dropdown-item @(t.TenantId == AppState.Session.CurrentTenantId ? "active" : "")"
+                            @onclick="() => Navigate()">
+                        @t.Name
+                    </button>
+                </li>
+            }
+        </ul>
+    </div>
+}
+else
+{
+    <span class="badge text-bg-primary px-3 py-2">
+        @AppState.Session.CurrentTenantName
+    </span>
+}
+
+@code{
+
+    private void Navigate()
+    {
+        Nav.NavigateTo("/select-tenant");
+    }
+}

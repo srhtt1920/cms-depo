@@ -1,0 +1,77 @@
+@implements IDisposable
+
+@{
+    var f = (Filter ?? "").ToLower();
+}
+
+<nav class="cms-nav">
+    @foreach (var tab in NavMenu.GetVisibleTabs())
+    {
+        var t = tab;
+        var items = NavMenu.GetVisibleEntries(t.Key)
+        .Where(i => string.IsNullOrEmpty(f) ||
+        i.Label.Contains(f, StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+        @if (items.Any())
+        {
+            var collapsed = _collapsed.Contains(t.Key);
+            <div class="nav-group-header @(collapsed ? "collapsed" : "")"
+                 @onclick="() => Toggle(t.Key)">
+                <SvgIcon Name="@t.Icon" Size="13" Style="flex-shrink:0;opacity:.7" />
+                <span class="nav-group-label">@t.Label</span>
+                <span class="nav-group-chevron">
+                    <SvgIcon Name="icon-chevron-down" Size="10" />
+                </span>
+            </div>
+
+            @if (!collapsed)
+            {
+                <div class="nav-group-items">
+                    @foreach (var item in items)
+                    {
+                        <NavLink class="nav-item"
+                                 href="@item.Href"
+                                 Match="@(item.Href == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)"
+                                 ActiveClass="nav-item--active">
+                            <SvgIcon Name="@item.Icon" Size="14" Style="flex-shrink:0" />
+                            <span>@item.Label</span>
+                            @if (item.Badge is not null)
+                            {
+                                <span class="nav-badge @item.BadgeCss">@item.Badge</span>
+                            }
+                        </NavLink>
+                    }
+                </div>
+            }
+        }
+    }
+
+    @if (!NavMenu.GetVisibleTabs().SelectMany(t => NavMenu.GetVisibleEntries(t.Key))
+        .Any(i => string.IsNullOrEmpty(f) || i.Label.Contains(f, StringComparison.OrdinalIgnoreCase)))
+    {
+        <p class="dash-nav-empty">Sonuç bulunamadı</p>
+    }
+</nav>
+
+@code {
+    [Parameter] public string? Filter { get; set; }
+
+    HashSet<string> _collapsed = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await NavMenu.EnsureLoadedAsync();
+        NavMenu.OnChanged += Refresh;
+    }
+
+    void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => NavMenu.OnChanged -= Refresh;
+
+    void Toggle(string key)
+    {
+        if (_collapsed.Contains(key)) _collapsed.Remove(key);
+        else _collapsed.Add(key);
+    }
+}

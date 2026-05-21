@@ -1,0 +1,316 @@
+@page "/users"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Kullanıcılar — CMS</PageTitle>
+@if (!AppState.Session.Can("users.manage"))
+{
+    <AccessDenied />
+    return;
+}
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+        @if (_loading)
+        {
+            <div class="text-center p-5"><div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div></div>
+        }
+        else if (_error is not null)
+        {
+
+            <div class="p-4"><div class="alert alert-danger py-2 small">@_error <button class="btn btn-link btn-sm" @onclick="() => _ = LoadAsync()">Retry</button></div></div>
+        }
+        else
+        {
+            <div class="cms-table-wrap">
+                <table class="cms-table">
+                    <thead>
+                        <tr>
+                            <th class="col-check"><input type="checkbox" class="form-check-input" @onchange="e => ToggleAll((bool)e.Value!)" /></th>
+                            <th><div class="th-inner">Email</div></th>
+                            <th><div class="th-inner">Roles</div></th>
+                            <th><div class="th-inner">Status</div></th>
+                            <th><div class="th-inner">Last Login</div></th>
+                            <th style="width:80px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in Filtered)
+                        {
+                            <tr class="@(_sel.Contains(u.Id) ? "selected" : "")">
+                                <td class="col-check" @onclick:stopPropagation>
+                                    <input type="checkbox" class="form-check-input"
+                                           checked="@_sel.Contains(u.Id)"
+                                           @onchange="e => { if ((bool)e.Value!) _sel.Add(u.Id); else _sel.Remove(u.Id); }" />
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="dash-avatar avatar-sm" style="background:@AvatarColor(u.Email);color:#fff;flex-shrink:0">
+                                            @u.Email[0].ToString().ToUpper()
+                                        </div>
+                                        <span style="font-weight:500">@u.Email</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-1">
+                                        @foreach (var r in u.Roles)
+                                        {
+                                            <span class="badge badge-perm">@r</span>
+                                        }
+                                        @if (!u.Roles.Any())
+                                        {
+                                            <span style="color:var(--text-4);font-size:12px">—</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    @if (u.IsActive)
+                                    {
+                                        <span class="status-dot green">Active</span>
+                                    }
+                                    else
+                                    {
+
+                                        <span class="status-dot red">Passive</span>
+                                    }
+                                </td>
+                                <td class="mono text-3" style="font-size:12px">
+                                    @*                             @(u.LastLogin?.ToString("MM/dd/yy HH:mm") ?? "—")
+         *@                        </td>
+                                <td @onclick:stopPropagation>
+                                    <div class="d-flex gap-1">
+                                        <a href="/users/@u.Id" class="btn-ghost btn-icon" title="Detay">👤</a>
+                                        <button class="btn-ghost btn-icon" @onclick="() => OpenEdit(u)" title="Hızlı Düzenle">
+                                            <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z" /></svg>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                        @if (!Filtered.Any())
+                        {
+                            <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-4)">No users found.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @if (_showAdd)
+        {
+            <div class="cms-backdrop" @onclick="CloseDrawer"></div>
+            <div class="cms-drawer">
+                <div class="cms-drawer-header">
+                    <div><div class="cms-drawer-title">Add User</div><div class="cms-drawer-subtitle">@AppState.Session.CurrentTenantName</div></div>
+                    <button class="btn-ghost btn-icon" @onclick="CloseDrawer">✕</button>
+                </div>
+                <div class="cms-drawer-body">
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input @bind="_addEmail" type="email" class="form-control" placeholder="user@@company.com" />
+                        @if (!string.IsNullOrEmpty(_addEmailErr))
+                        {
+                            <div class="text-danger" style="font-size:12px;margin-top:3px">@_addEmailErr</div>
+                        }
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <div class="input-group">
+                            <input @bind="_addPwd" type="@(_showPwd ? "text" : "password")" class="form-control" placeholder="Min 8 chars" />
+                            <button class="btn btn-outline-secondary" type="button" @onclick="() => _showPwd = !_showPwd" style="font-size:12px">@(_showPwd ? "Hide" : "Show")</button>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Roles</label>
+                        @foreach (var r in _roles)
+                        {
+                            <div class="perm-row">
+                                <input type="checkbox" class="form-check-input" id="ar-@r.Id"
+                                       checked="@_addRoleIds.Contains(r.Id)"
+                                       @onchange="e => ToggleRole(_addRoleIds, r.Id, (bool)e.Value!)" />
+                                <label class="perm-label" for="ar-@r.Id">@r.Name</label>
+                                <span class="perm-key">@r.PermissionKeys.Count perms</span>
+                            </div>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(_formErr))
+                    {
+                        <div class="alert alert-danger py-2" style="font-size:12px;margin-top:8px">@_formErr</div>
+                    }
+                </div>
+                <div class="cms-drawer-footer">
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="CloseDrawer">Cancel</button>
+                    <button class="btn btn-primary btn-sm" @onclick="SaveAdd" disabled="@_saving">
+                        @if (_saving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Create User
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (_editUser is not null)
+        {
+            <div class="cms-backdrop" @onclick="CloseDrawer"></div>
+            <div class="cms-drawer">
+                <div class="cms-drawer-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="avatar avatar-md" style="background:@AvatarColor(_editUser.Email);color:#fff">@_editUser.Email[0].ToString().ToUpper()</div>
+                        <div><div class="cms-drawer-title">Edit User</div><div class="cms-drawer-subtitle mono">@_editUser.Email</div></div>
+                    </div>
+                    <button class="btn-ghost btn-icon" @onclick="CloseDrawer">✕</button>
+                </div>
+                <div class="cms-drawer-body">
+                    <div class="mb-4 p-3" style="background:var(--surface-2);border-radius:7px;border:1px solid var(--border)">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div><div style="font-weight:600;font-size:13px">Account Status</div><div style="font-size:12px;color:var(--text-3)">Allow login</div></div>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" role="switch"
+                                       checked="@_editActive"
+                                       @onchange="e => _editActive = (bool)e.Value!" />
+                            </div>
+                        </div>
+                    </div>
+                    <label class="form-label">Roles</label>
+                    @foreach (var r in _roles)
+                    {
+                        <div class="perm-row">
+                            <input type="checkbox" class="form-check-input" id="er-@r.Id"
+                                   checked="@_editRoleIds.Contains(r.Id)"
+                                   @onchange="e => ToggleRole(_editRoleIds, r.Id, (bool)e.Value!)" />
+                            <label class="perm-label" for="er-@r.Id">@r.Name</label>
+                            <span class="perm-key">@r.PermissionKeys.Count perms</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_formErr))
+                    {
+                        <div class="alert alert-danger py-2" style="font-size:12px;margin-top:8px">@_formErr</div>
+                    }
+                </div>
+                <div class="cms-drawer-footer">
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="CloseDrawer">Cancel</button>
+                    <button class="btn btn-primary btn-sm" @onclick="SaveEdit" disabled="@_saving">
+                        @if (_saving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        }
+
+    </div>
+</div>
+
+@code {
+    bool _loading = true, _saving, _showAdd, _showPwd;
+    string _search = "", _addEmail = "", _addPwd = "", _addEmailErr = "", _formErr = "";
+    List<Guid> _addRoleIds = [], _editRoleIds = [];
+    bool _editActive;
+    UserListDto? _editUser;
+    string? _error;
+    List<UserListDto> _users = [];
+    List<RoleListDto> _roles = [];
+    HashSet<Guid> _sel = [];
+
+    List<UserListDto> Filtered => _users
+        .Where(u => string.IsNullOrEmpty(_search) || u.Email.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    { if (firstRender) await LoadAsync(); }
+
+    async Task LoadAsync()
+    {
+        _loading = true; _error = null;
+        StateHasChanged();
+
+        // Paralel çek
+        var tUsers = UserApiClient.GetUsersAsync();
+        var tRoles = RoleApiClient.GetRolesAsync();
+        await Task.WhenAll(tUsers, tRoles);
+
+        var users = tUsers.Result;
+        var roles = tRoles.Result;
+
+        if (users.IsSuccess && users.Data is not null)
+            _users = Guard.FilterUsers(users.Data);
+        else
+            _error = users.Error?.Message ?? "Users yüklenemedi.";
+
+        if (roles.IsSuccess && roles.Data is not null)
+            _roles = Guard.FilterRoleList(roles.Data);
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    void OpenAdd() { _addEmail = ""; _addPwd = ""; _addEmailErr = ""; _formErr = ""; _addRoleIds = []; _showAdd = true; }
+    void OpenEdit(UserListDto u)
+    {
+        _editUser = u; _editActive = u.IsActive; _formErr = "";
+        _editRoleIds = [.. _roles.Where(r => u.Roles.Contains(r.Name)).Select(r => r.Id)];
+    }
+    void CloseDrawer() { _showAdd = false; _editUser = null; }
+    void ToggleRole(List<Guid> list, Guid id, bool on) { if (on) list.Add(id); else list.Remove(id); }
+    void ToggleAll(bool on) { if (on) foreach (var u in Filtered) _sel.Add(u.Id); else _sel.Clear(); }
+
+    async Task SaveAdd()
+    {
+        _addEmailErr = ""; _formErr = "";
+        if (string.IsNullOrWhiteSpace(_addEmail)) { _addEmailErr = "Email required."; return; }
+        if (_addPwd.Length < 8) { Toast.Error("Password min 8 chars."); return; }
+        _saving = true;
+        var r = await UserApiClient.CreateUserAsync(new CreateUserApiRequest(_addEmail, _addPwd, _addRoleIds));
+        if (r.IsSuccess && r.Data is not null)
+        {
+            // CreateUserResponse → UserListDto dönüşümü (LastLogin ve PermissionVersion yok)
+            var newUser = new UserListDto(r.Data.Id, r.Data.Email, r.Data.Email, r.Data.Roles, r.Data.IsActive, null, 1);
+            _users.Add(newUser);
+            CloseDrawer();
+        }
+        else Toast.Error(r.Error?.Message ?? "Failed.");
+        _saving = false;
+    }
+
+    async Task SaveEdit()
+    {
+        if (_editUser is null) return;
+        _formErr = ""; _saving = true;
+        var roleResult = await UserApiClient.UpdateUserRolesAsync(_editUser.Id, new UpdateRolesApiRequest(_editRoleIds));
+        await UserApiClient.SetUserActiveAsync(_editUser.Id, _editActive);
+        if (roleResult.IsSuccess && roleResult.Data != null)
+        {
+            var i = _users.FindIndex(u => u.Id == _editUser.Id);
+            // if (i >= 0) _users[i] = roleResult.Data with { = _editActive };
+            CloseDrawer();
+        }
+        else { _formErr = roleResult.Error?.Message ?? "Failed."; Toast.Error(_formErr); }
+        _saving = false;
+    }
+
+    static string AvatarColor(string e)
+    {
+        string[] p = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#0ea5e9"];
+        return p[Math.Abs(e.GetHashCode()) % p.Length];
+    }
+}

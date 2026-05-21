@@ -1,0 +1,238 @@
+﻿@* Topbar'a eklenir: <NotificationCenter /> *@
+@implements IDisposable
+
+<div class="position-relative" style="display:inline-block">
+    <!-- Bell butonu -->
+    <button class="btn-ghost btn-icon position-relative"
+            @onclick="Toggle"
+            title="Bildirimler"
+            style="font-size:18px;line-height:1">
+        🔔
+        @if (UnreadCount > 0)
+        {
+            <span class="position-absolute badge rounded-pill bg-danger"
+                  style="top:-4px;right:-4px;font-size:9px;min-width:16px;height:16px;padding:0 4px;display:flex;align-items:center;justify-content:center">
+                @(UnreadCount > 99 ? "99+" : UnreadCount.ToString())
+            </span>
+        }
+    </button>
+
+    <!-- Panel -->
+    @if (_open)
+    {
+        <div style="position:fixed;inset:0;z-index:1039" @onclick="Close"></div>
+        <div class="notification-panel shadow-lg"
+             style="position:absolute;right:0;top:calc(100% + 8px);width:360px;z-index:1040;background:white;border-radius:12px;border:1px solid var(--border);overflow:hidden">
+
+            <!-- Header -->
+            <div class="d-flex align-items-center justify-content-between px-3 py-2"
+                 style="border-bottom:1px solid var(--border)">
+                <span class="fw-semibold small">Bildirimler</span>
+                <div class="d-flex gap-2 align-items-center">
+                    @if (UnreadCount > 0)
+                    {
+                        <button class="btn btn-link btn-sm p-0" style="font-size:11px" @onclick="MarkAllRead">
+                            Tümünü Okundu İşaretle
+                        </button>
+                    }
+                    <button class="btn btn-ghost btn-sm p-1" @onclick="Close">✕</button>
+                </div>
+            </div>
+
+            <!-- Filtre tabs -->
+            <div class="d-flex border-bottom">
+                @foreach (var tab in new[] { "all", "unread", "approval", "publish", "system" })
+                {
+                    <button class="btn btn-ghost flex-fill py-1 @(_filter == tab ? "fw-semibold" : "")"
+                            style="font-size:11px;border-radius:0;border-bottom:2px solid @(_filter == tab ? "var(--accent)" : "transparent")"
+                            @onclick="() => _filter = tab">
+                        @TabLabel(tab)
+                    </button>
+                }
+            </div>
+
+            <!-- Liste -->
+            <div style="max-height:420px;overflow-y:auto">
+                @if (_loading)
+                {
+                    <div class="text-center p-4">
+                        <div class="spinner-border spinner-border-sm" style="color:var(--accent)"></div>
+                    </div>
+                }
+                else if (!FilteredItems.Any())
+                {
+                    <div class="text-center py-5">
+                        <div style="font-size:32px;margin-bottom:8px">🔕</div>
+                        <div class="small text-muted">Bildirim yok</div>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var n in FilteredItems)
+                    {
+                        <div class="notification-item d-flex gap-3 px-3 py-2 @(!n.IsRead ? "notification-item--unread" : "")"
+                             style="cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s"
+                             @onclick="() => HandleClick(n)">
+                            <!-- İkon -->
+                            <div class="flex-shrink-0 d-flex align-items-start pt-1" style="font-size:20px">
+                                @NotifIcon(n.Type)
+                            </div>
+                            <!-- İçerik -->
+                            <div class="flex-fill min-w-0">
+                                <div class="d-flex align-items-start justify-content-between gap-1">
+                                    <div class="small fw-medium" style="font-size:12px;line-height:1.4">@n.Title</div>
+                                    @if (!n.IsRead)
+                                    {
+                                        <div style="width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:4px"></div>
+                                    }
+                                </div>
+                                <div class="small text-muted" style="font-size:11px;margin-top:1px">@n.Body</div>
+                                <div class="d-flex align-items-center gap-2 mt-1">
+                                    <span class="badge @TypeBadge(n.Type)" style="font-size:9px">@n.Type</span>
+                                    <span class="small text-muted" style="font-size:10px">@RelativeTime(n.CreatedAt)</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <!-- Footer -->
+            <div class="px-3 py-2 text-center border-top">
+                <a href="/notifications" class="small text-muted" style="font-size:11px">Tüm bildirimleri gör</a>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .notification-item--unread {
+        background: color-mix(in srgb, var(--accent) 5%, transparent);
+    }
+
+    .notification-item:hover {
+        background: var(--surface-2);
+    }
+</style>
+
+@code {
+    bool _open;
+    bool _loading;
+    string _filter = "all";
+    List<NotifDto> _items = [];
+    System.Threading.Timer? _timer;
+
+    int UnreadCount => _items.Count(n => !n.IsRead);
+
+    IEnumerable<NotifDto> FilteredItems => _filter switch
+    {
+        "unread" => _items.Where(n => !n.IsRead),
+        "approval" => _items.Where(n => n.Type == "approval"),
+        "publish" => _items.Where(n => n.Type is "publish" or "schedule"),
+        "system" => _items.Where(n => n.Type == "system"),
+        _ => _items
+    };
+
+    protected override void OnInitialized()
+    {
+        LoadDemoNotifications();
+        // Her 60 sn'de polling — gerçek impl. SignalR veya SSE kullanmalı
+        _timer = new System.Threading.Timer(_ =>
+            InvokeAsync(() => { LoadDemoNotifications(); StateHasChanged(); }),
+            null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+    }
+
+    void Toggle()
+    {
+        _open = !_open;
+        if (_open && _items.Any()) { /* fetch */ }
+    }
+
+    void Close() => _open = false;
+
+    void MarkAllRead()
+    {
+        foreach (var n in _items) n.IsRead = true;
+    }
+
+    void HandleClick(NotifDto n)
+    {
+        n.IsRead = true;
+        if (n.ActionUrl is not null)
+            Nav.NavigateTo(n.ActionUrl);
+    }
+
+    void LoadDemoNotifications()
+    {
+        _items =
+        [
+            new(Guid.NewGuid(), "approval", "İçerik Onay Bekliyor",
+                "\"Yaz Kampanyası\" içeriği onayınızı bekliyor.", false,
+                DateTime.UtcNow.AddMinutes(-5), "/approval-center"),
+            new(Guid.NewGuid(), "publish", "Yayın Tamamlandı",
+                "\"Ürün Lansmanı\" başarıyla yayınlandı.", false,
+                DateTime.UtcNow.AddMinutes(-22), "/contents"),
+            new(Guid.NewGuid(), "approval", "İçerik Reddedildi",
+                "Admin \"Blog Yazısı 3\" içeriğini reddetti. Neden: Eksik görseller.", false,
+                DateTime.UtcNow.AddHours(-1), "/contents"),
+            new(Guid.NewGuid(), "schedule", "Zamanlanmış Yayın Başarısız",
+                "\"İndirim Duyurusu\" zamanında yayınlanamadı.", false,
+                DateTime.UtcNow.AddHours(-2), "/schedule"),
+            new(Guid.NewGuid(), "system", "Bakım Modu Aktifleştirildi",
+                "Sistem bakım moduna alındı. Planlanan bitiş: 03:00.", true,
+                DateTime.UtcNow.AddHours(-3), null),
+            new(Guid.NewGuid(), "approval", "İçerik Onaylandı",
+                "\"Hakkımızda\" sayfası onaylandı ve yayınlandı.", true,
+                DateTime.UtcNow.AddHours(-5), "/contents"),
+        ];
+    }
+
+    static string TabLabel(string t) => t switch
+    {
+        "unread" => "Okunmadı",
+        "approval" => "Onay",
+        "publish" => "Yayın",
+        "system" => "Sistem",
+        _ => "Tümü"
+    };
+
+    static string NotifIcon(string t) => t switch
+    {
+        "approval" => "✅",
+        "publish" => "🚀",
+        "schedule" => "🕐",
+        "system" => "⚙️",
+        _ => "🔔"
+    };
+
+    static string TypeBadge(string t) => t switch
+    {
+        "approval" => "bg-warning text-dark",
+        "publish" => "bg-success",
+        "schedule" => "bg-info",
+        "system" => "bg-secondary",
+        _ => "bg-light text-dark"
+    };
+
+    static string RelativeTime(DateTime dt)
+    {
+        var diff = DateTime.UtcNow - dt;
+        return diff.TotalMinutes < 1 ? "Az önce"
+             : diff.TotalMinutes < 60 ? $"{(int)diff.TotalMinutes} dk önce"
+             : diff.TotalHours < 24 ? $"{(int)diff.TotalHours} sa önce"
+             : $"{(int)diff.TotalDays} gün önce";
+    }
+
+    public void Dispose() => _timer?.Dispose();
+
+    class NotifDto(Guid id, string type, string title, string body, bool isRead, DateTime createdAt, string? actionUrl)
+    {
+        public Guid Id { get; } = id;
+        public string Type { get; } = type;
+        public string Title { get; } = title;
+        public string Body { get; } = body;
+        public bool IsRead { get; set; } = isRead;
+        public DateTime CreatedAt { get; } = createdAt;
+        public string? ActionUrl { get; } = actionUrl;
+    }
+}

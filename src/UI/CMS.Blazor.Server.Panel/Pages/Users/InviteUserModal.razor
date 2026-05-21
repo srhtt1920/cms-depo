@@ -1,0 +1,241 @@
+
+@if (Show)
+{
+    <div class="cms-backdrop" @onclick="OnClose"></div>
+    <div class="cms-drawer" style="max-width:520px">
+        <div class="cms-drawer-header">
+            <div>
+                <div class="cms-drawer-title">Kullanıcı Davet Et</div>
+                <div class="cms-drawer-subtitle">Davet e-postası gönderilir, kullanıcı ilk girişte şifresini oluşturur</div>
+            </div>
+            <button class="btn-ghost btn-icon" @onclick="OnClose">✕</button>
+        </div>
+
+        <div class="cms-drawer-body">
+
+            <div class="invite-tabs mb-4">
+                <button class="invite-tab @(_tab==0?"active":"")" @onclick="()=>_tab=0">
+                    <span class="tab-num">1</span> Kullanıcı Bilgileri
+                </button>
+                <div class="invite-tab-sep"></div>
+                <button class="invite-tab @(_tab==1?"active":"")"
+                        @onclick="()=>{ if(EmailOk) _tab=1; }"
+                        disabled="@(!EmailOk)">
+                    <span class="tab-num">2</span> Rol & İzinler
+                </button>
+                <div class="invite-tab-sep"></div>
+                <button class="invite-tab @(_tab==2?"active":"")"
+                        @onclick="()=>{ if(EmailOk && _selectedRoles.Any()) _tab=2; }"
+                        disabled="@(!(EmailOk && _selectedRoles.Any()))">
+                    <span class="tab-num">3</span> Mesaj & Gönder
+                </button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert alert-danger py-2 small mb-3">@_error</div>
+            }
+
+            @if (_tab == 0)
+            {
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">E-posta <span class="text-danger">*</span></label>
+                    <input @bind="_email"
+                           @oninput='e => { _email = e.Value?.ToString() ?? ""; _error = null; }'
+                           type="email"
+                           class="form-control form-control-sm @(!string.IsNullOrEmpty(_email) && !EmailOk ? "is-invalid" : "")"
+                           placeholder="ad@@example.com" autofocus />
+                    @if (!string.IsNullOrEmpty(_email) && !EmailOk)
+                    {
+                        <div class="invalid-feedback">Geçerli bir e-posta giriniz.</div>
+                    }
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label small fw-medium">Ad</label>
+                        <input @bind="_firstName" type="text" class="form-control form-control-sm" placeholder="Ad" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small fw-medium">Soyad</label>
+                        <input @bind="_lastName" type="text" class="form-control form-control-sm" placeholder="Soyad" />
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Davet Süresi</label>
+                    <select class="form-select form-select-sm" @bind="_expirationDays">
+                        <option value="3">3 gün</option>
+                        <option value="7">7 gün (varsayılan)</option>
+                        <option value="14">14 gün</option>
+                        <option value="30">30 gün</option>
+                    </select>
+                </div>
+                <div class="d-flex justify-content-end">
+                    <button class="btn btn-primary btn-sm" @onclick="()=>_tab=1" disabled="@(!EmailOk)">İleri →</button>
+                </div>
+            }
+
+            @if (_tab == 1)
+            {
+                @if (_rolesLoading)
+                {
+                    <div class="text-center py-4">
+                        <div class="spinner-border spinner-border-sm" style="color:var(--accent)"></div>
+                    </div>
+                }
+                else
+                {
+                    <div class="small fw-semibold text-muted mb-2">ROL SEÇİN <span class="text-danger">*</span></div>
+                    <div class="mb-3" style="max-height:280px;overflow-y:auto">
+                        @foreach (var role in _roles)
+                        {
+                            var rid = role.Id;
+                            var sel = _selectedRoles.Contains(rid);
+                            <label class="d-flex align-items-start gap-2 p-2 mb-1 rounded"
+                                   style="border:1px solid var(--border);cursor:pointer;background:@(sel?"var(--accent-soft,rgba(99,102,241,.08))":"transparent")">
+                                <input type="checkbox" class="form-check-input mt-0"
+                                       checked="@sel"
+                                       @onchange="e => ToggleRole(rid, (bool)e.Value!)" />
+                                <div>
+                                    <div class="fw-medium" style="font-size:13px">@role.Name</div>
+                                    @if (!string.IsNullOrEmpty(role.Description))
+                                    {
+                                        <div class="text-muted" style="font-size:11px">@role.Description</div>
+                                    }
+                                </div>
+                            </label>
+                        }
+                    </div>
+                    @if (!_selectedRoles.Any())
+                    {
+                        <div class="text-danger" style="font-size:11px">En az bir rol seçmelisiniz.</div>
+                    }
+                    <div class="d-flex justify-content-between mt-3">
+                        <button class="btn btn-ghost btn-sm" @onclick="()=>_tab=0">← Geri</button>
+                        <button class="btn btn-primary btn-sm" @onclick="()=>_tab=2" disabled="@(!_selectedRoles.Any())">İleri →</button>
+                    </div>
+                }
+            }
+
+            @if (_tab == 2)
+            {
+                <div class="p-3 rounded mb-3" style="background:var(--surface-2);border:1px solid var(--border)">
+                    <div class="small fw-semibold text-muted mb-2">DAVET ÖZETİ</div>
+                    <div class="d-flex justify-content-between py-1 small">
+                        <span class="text-muted">E-posta</span><span class="fw-medium">@_email</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(_firstName))
+                    {
+                        <div class="d-flex justify-content-between py-1 small border-top">
+                            <span class="text-muted">Ad Soyad</span><span>@_firstName @_lastName</span>
+                        </div>
+                    }
+                    <div class="d-flex justify-content-between py-1 small border-top">
+                        <span class="text-muted">Roller</span>
+                        <div class="d-flex gap-1 flex-wrap justify-content-end">
+                            @foreach (var rid in _selectedRoles)
+                            {
+                                var rname = _roles.FirstOrDefault(r => r.Id == rid)?.Name ?? "?";
+                                <span class="badge" style="background:var(--accent);font-size:9px">@rname</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between py-1 small border-top">
+                        <span class="text-muted">Geçerlilik</span><span>@_expirationDays gün</span>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label small fw-medium">Kişisel Mesaj (opsiyonel)</label>
+                    <textarea @bind="_personalMessage" class="form-control form-control-sm" rows="3"
+                              placeholder="Merhaba, sizi ekibimize davet etmek istiyorum..."></textarea>
+                    <div class="form-text" style="font-size:11px">Bu mesaj davet e-postasına eklenir.</div>
+                </div>
+
+                <div class="d-flex justify-content-between">
+                    <button class="btn btn-ghost btn-sm" @onclick="()=>_tab=1">← Geri</button>
+                    <button class="btn btn-success btn-sm d-flex align-items-center gap-2"
+                            @onclick="SendInviteAsync" disabled="@_sending">
+                        @if (_sending) { <span class="spinner-border spinner-border-sm"></span> }
+                        ✉️ Daveti Gönder
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnSent { get; set; }
+
+    string _email = "", _firstName = "", _lastName = "", _personalMessage = "";
+    int _expirationDays = 7;
+    int _tab;
+    bool _sending, _rolesLoading;
+    string? _error;
+    List<RoleListDto> _roles = [];
+    HashSet<Guid> _selectedRoles = [];
+
+    bool EmailOk => !string.IsNullOrEmpty(_email) &&
+                    System.Text.RegularExpressions.Regex.IsMatch(_email,
+                        @"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Show && !_roles.Any()) await LoadRolesAsync();
+    }
+
+    async Task LoadRolesAsync()
+    {
+        _rolesLoading = true;
+        try
+        {
+            var r = await RoleApiClient.GetRolesAsync();
+            if (r.IsSuccess) _roles = r.Data ?? [];
+        }
+        catch { }
+        finally { _rolesLoading = false; }
+    }
+
+    void ToggleRole(Guid id, bool on) { if (on) _selectedRoles.Add(id); else _selectedRoles.Remove(id); }
+
+    async Task SendInviteAsync()
+    {
+        if (!EmailOk || !_selectedRoles.Any()) return;
+        _sending = true; _error = null;
+        try
+        {
+            var req = new InviteUserRequest(
+                Email: _email,
+                FirstName: string.IsNullOrWhiteSpace(_firstName) ? null : _firstName,
+                LastName:  string.IsNullOrWhiteSpace(_lastName)  ? null : _lastName,
+                RoleIds: _selectedRoles.ToList(),
+                PersonalMessage: string.IsNullOrWhiteSpace(_personalMessage) ? null : _personalMessage,
+                ExpirationDays: _expirationDays);
+
+            var r = await InviteApiClient.SendInviteAsync(req);
+            if (r.IsSuccess)
+            {
+                Toast.Success($"Davet gönderildi → {_email}");
+                await OnSent.InvokeAsync(_email);
+                await OnClose.InvokeAsync();
+                ResetForm();
+            }
+            else
+            {
+                _error = r.Error?.Message ?? "Davet gönderilemedi.";
+                Toast.Error(_error);
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; Toast.Error(ex.Message); }
+        finally { _sending = false; }
+    }
+
+    void ResetForm()
+    {
+        _email = _firstName = _lastName = _personalMessage = "";
+        _expirationDays = 7; _tab = 0;
+        _selectedRoles.Clear(); _error = null;
+    }
+}

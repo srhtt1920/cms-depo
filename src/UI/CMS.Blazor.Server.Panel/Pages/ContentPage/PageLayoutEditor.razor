@@ -1,0 +1,538 @@
+@page "/pages/{PageId:guid}/layout"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Sayfa Düzeni — CMS</PageTitle>
+@if (!AppState.Session.Can("page.read"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+
+        <div class="input-group input-group-sm" style="width:200px">
+            <span class="input-group-text bg-transparent"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" /></svg></span>
+            <input @bind="_search" @bind:event="oninput" type="text" class="form-control" placeholder="Ara..." />
+        </div>
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else if (_page is null)
+{
+    <div class="alert alert-danger">Sayfa bulunamadı.</div>
+}
+else
+{
+    <PageHeader Title="@($"Düzen Editörü — {CurrentTitle}")">
+        <Actions>
+            <button class="btn btn-outline-secondary btn-sm"
+                    @onclick='() => Nav.NavigateTo("/pages")'>
+                ← Sayfa Ağacına Dön
+            </button>
+            <div class="btn-group btn-group-sm">
+                <button class="btn @(_panelMode == "split" ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick='() => _panelMode = "split"' title="Yan yana">
+                    ⊞
+                </button>
+                <button class="btn @(_panelMode == "edit" ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick='() => _panelMode = "edit"' title="Sadece editör">
+                    ✏
+                </button>
+                <button class="btn @(_panelMode == "preview" ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick='() => _panelMode = "preview"' title="Sadece önizleme">
+                    👁
+                </button>
+            </div>
+            <button class="btn btn-sm btn-success" @onclick="Save" disabled="@_saving">
+                @if (_saving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Kaydet
+            </button>
+        </Actions>
+    </PageHeader>
+
+
+
+    <div class="layout-editor-wrap @($"mode-{_panelMode}")">
+        <!-- ── SOL PANEL: Editör ────────────────────────────────────── -->
+        @if (_panelMode is "split" or "edit")
+
+        {
+
+            <div class="layout-editor-panel">
+                <!-- Tab: Çeviriler -->
+                <ul class="nav nav-tabs mb-3" style="border-bottom:1px solid var(--border)">
+                    <li class="nav-item">
+                        <button class="nav-link @(_editorTab == "translations" ? "active" : "")"
+                                @onclick='() => _editorTab = "translations"'>
+                            🌐 Çeviriler
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link @(_editorTab == "settings" ? "active" : "")"
+                                @onclick='() => _editorTab = "settings"'>
+                            ⚙ Ayarlar
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link @(_editorTab == "link" ? "active" : "")"
+                                @onclick='() => _editorTab = "link"'>
+                            🔗 İçerik Bağlantısı
+                        </button>
+                    </li>
+                </ul>
+            </div>
+
+            @if (_editorTab == "translations")
+            {
+                <!-- Dil seçici -->
+                <div class="d-flex gap-1 mb-3 flex-wrap">
+                    @foreach (var tr in _page.Translations)
+                    {
+                        var lang = tr.LanguageCode;
+                        <button class="btn btn-sm @(_activeLang == lang ? "btn-primary" : "btn-outline-secondary")"
+                                @onclick="() => SetLang(lang)">
+                            @lang.ToUpper()
+                        </button>
+                    }
+                </div>
+
+                @if (_currentTranslation is not null)
+                {
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Sayfa Başlığı *</label>
+                        <input class="form-control form-control-sm"
+                               @bind="_currentTranslation.Title"
+                               @bind:event="oninput"
+                               placeholder="Sayfa başlığı" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Link Adı *</label>
+                        <input class="form-control form-control-sm"
+                               @bind="_currentTranslation.LinkName"
+                               placeholder="Menüde görünecek ad" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Slug *</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">/</span>
+                            <input class="form-control"
+                                   @bind="_currentTranslation.Slug"
+                                   placeholder="sayfa-yolu" />
+                        </div>
+                    </div>
+                    <div class="border-top pt-3 mt-2">
+                        <label class="form-label small fw-semibold text-muted">SEO</label>
+                        <div class="mb-2">
+                            <label class="form-label small fw-medium">Meta Başlık</label>
+                            <input class="form-control form-control-sm"
+                                   @bind="_currentTranslation.MetaTitle"
+                                   placeholder="@_currentTranslation.Title" />
+                            <div class="d-flex justify-content-between mt-1">
+                                <small class="text-muted" style="font-size:10px">Boş bırakılırsa sayfa başlığı kullanılır</small>
+                                <small class="@(_currentTranslation.MetaTitle?.Length > 60 ? "text-danger" : "text-muted")" style="font-size:10px">
+                                    @(_currentTranslation.MetaTitle?.Length ?? 0)/60
+                                </small>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-medium">Meta Açıklama</label>
+                            <textarea class="form-control form-control-sm" rows="2"
+                                      @bind="_currentTranslation.MetaDescription"
+                                      placeholder="Sayfa meta açıklaması..."></textarea>
+                            <div class="text-end mt-1">
+                                <small class="@(_currentTranslation.MetaDescription?.Length > 160 ? "text-danger" : "text-muted")" style="font-size:10px">
+                                    @(_currentTranslation.MetaDescription?.Length ?? 0)/160
+                                </small>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-medium">Meta Anahtar Kelimeler</label>
+                            <input class="form-control form-control-sm"
+                                   @bind="_currentTranslation.MetaKeywords"
+                                   placeholder="kelime1, kelime2, kelime3" />
+                        </div>
+                    </div>
+                }
+            }
+            else if (_editorTab == "settings")
+            {
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Sayfa Türü</label>
+                    <select class="form-select form-select-sm" @bind="_pageType">
+                        <option value="Standard">Standard</option>
+                        <option value="Home">Ana Sayfa</option>
+                        <option value="Blog">Blog</option>
+                        <option value="Landing">Landing Page</option>
+                        <option value="External">Dış Link</option>
+                    </select>
+                </div>
+                @if (_pageType == "External")
+                {
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Dış URL</label>
+                        <input class="form-control form-control-sm" @bind="_externalUrl"
+                               placeholder="https://..." />
+                    </div>
+                }
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">İkon</label>
+                    <input class="form-control form-control-sm" @bind="_icon"
+                           placeholder="home, file-text, users..." />
+                    @if (!string.IsNullOrEmpty(_icon))
+                    {
+                        <div class="mt-1">
+                            <SvgIcon Name="@_icon" Size="16" />
+                            <small class="text-muted ms-1" style="font-size:10px">Önizleme</small>
+                        </div>
+                    }
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Sıra</label>
+                    <input type="number" class="form-control form-control-sm" @bind="_order" />
+                </div>
+                <div class="d-flex gap-3 mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" @bind="_isActive" id="chkActive" />
+                        <label class="form-check-label small" for="chkActive">Aktif</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" @bind="_isVisible" id="chkVisible" />
+                        <label class="form-check-label small" for="chkVisible">Menüde Görünür</label>
+                    </div>
+                </div>
+            }
+            else if (_editorTab == "link")
+            {
+                <div class="mb-3">
+                    <label class="form-label small fw-medium mb-2">İçerik Bağlantısı</label>
+                    <p class="text-muted small">
+                        Bu sayfayı bir CMS içeriğine bağlayın. Bağlı içerik, sayfanın gövdesini oluşturur.
+                    </p>
+                    @if (_linkedContent is not null)
+                    {
+                        <div class="border rounded-2 p-2 d-flex align-items-center gap-2 mb-2"
+                             style="background:var(--surface-1)">
+                            <div class="flex-fill">
+                                <div class="small fw-medium">@(_linkedContent.Title.Length > 0 ? _linkedContent.Title : _linkedContent.Slug)</div>
+                                <div class="mono text-muted" style="font-size:10px">/@_linkedContent.Slug</div>
+                            </div>
+                            <button class="btn btn-link btn-sm p-0 text-danger" style="font-size:11px"
+                                    @onclick="UnlinkContent">
+                                Bağlantıyı Kaldır
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-muted small mb-2">Bağlı içerik yok</div>
+                    }
+                    <!-- Content search for linking -->
+                    <div class="input-group input-group-sm mb-2">
+                        <input @bind="_contentSearch" @bind:event="oninput"
+                               class="form-control" placeholder="İçerik ara..." />
+                    </div>
+                    @if (!string.IsNullOrEmpty(_contentSearch))
+                    {
+                        <div class="border rounded-2" style="max-height:200px;overflow-y:auto">
+                            @foreach (var content in contentSummaryDtos)
+                            {
+                                <button class="list-group-item list-group-item-action py-2 px-3 small w-100 text-start"
+                                        @onclick="() => LinkContent(content)">
+                                    <div class="fw-medium">@(content.Title.Length > 0 ? content.Title : content.Slug)</div>
+                                    <div class="mono text-muted" style="font-size:10px">/@content.Slug</div>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+        }
+
+        <!-- ── SAĞ PANEL: Önizleme ──────────────────────────────────── -->
+        @if (_panelMode is "split" or "preview")
+        {
+            <div class="layout-preview-panel">
+                <!-- Viewport selector -->
+                <div class="d-flex align-items-center justify-content-between mb-2 px-1">
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn @(_viewport == "desktop" ? "btn-primary" : "btn-outline-secondary")"
+                                style="font-size:11px" @onclick='() => _viewport = "desktop"'>
+                            🖥 Masaüstü
+                        </button>
+                        <button class="btn @(_viewport == "tablet" ? "btn-primary" : "btn-outline-secondary")"
+                                style="font-size:11px" @onclick='() => _viewport = "tablet"'>
+                            📱 Tablet
+                        </button>
+                        <button class="btn @(_viewport == "mobile" ? "btn-primary" : "btn-outline-secondary")"
+                                style="font-size:11px" @onclick='() => _viewport = "mobile"'>
+                            📱 Mobil
+                        </button>
+                    </div>
+                    <div class="d-flex gap-1">
+                        @foreach (var tr in _page.Translations)
+                        {
+                            var lang = tr.LanguageCode;
+                            <button class="btn btn-sm @(_previewLang == lang ? "btn-primary" : "btn-outline-secondary")"
+                                    style="font-size:10px;padding:2px 8px"
+                                    @onclick="() => _previewLang = lang">
+                                @lang.ToUpper()
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <!-- Browser chrome mockup -->
+                <div class="browser-chrome" style="width:@ViewportWidth">
+                    <div class="browser-bar">
+                        <div class="browser-dots">
+                            <span class="browser-dot" style="background:#ef4444"></span>
+                            <span class="browser-dot" style="background:#f59e0b"></span>
+                            <span class="browser-dot" style="background:#22c55e"></span>
+                        </div>
+                        <div class="browser-url">
+                            @if (_previewTr is not null)
+                            {
+                                <span>yoursite.com/@_previewTr.Slug</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="browser-body" style="min-height:400px;padding:20px;background:#fff">
+                        @if (_previewTr is not null)
+                        {
+                            <div style="max-width:@ViewportWidth;margin:0 auto">
+                                <!-- Title -->
+                                <h1 style="font-size:@(_viewport == "mobile" ? "20px" : "28px");font-weight:700;margin-bottom:8px;color:#1a1a2e">
+                                    @_previewTr.Title
+                                </h1>
+                                <!-- Meta preview -->
+                                @if (!string.IsNullOrEmpty(_previewTr.MetaDescription))
+                                {
+                                    <p style="font-size:13px;color:#4a4a6a;margin-bottom:16px">
+                                        @_previewTr.MetaDescription
+                                    </p>
+                                }
+                                <!-- Linked content preview -->
+                                @if (_linkedContent is not null)
+                                {
+                                    <div style="border:1px solid #e4e3f0;border-radius:8px;padding:16px;background:#f8f8fc">
+                                        <div style="font-size:11px;color:#8585a8;margin-bottom:8px">
+                                            🔗 Bağlı İçerik: @_linkedContent.Slug
+                                        </div>
+                                        <div style="font-size:13px;color:#1a1a2e;font-weight:500">
+                                            @(_linkedContent.Title.Length > 0 ? _linkedContent.Title : _linkedContent.Slug)
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div style="border:2px dashed #e4e3f0;border-radius:8px;padding:32px;text-align:center;color:#8585a8;font-size:12px">
+                                        İçerik bağlanmadı — sol panelden bir içerik seçin
+                                    </div>
+                                }
+
+                                <!-- SEO card -->
+                                @if (_panelMode == "preview")
+                                {
+                                    <div style="margin-top:24px;border:1px solid #e4e3f0;border-radius:8px;padding:12px;background:#f0f0f7">
+                                        <div style="font-size:10px;color:#8585a8;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">
+                                            Google Önizlemesi
+                                        </div>
+                                        <div style="color:#1558d6;font-size:14px;font-weight:500">
+                                            @(_previewTr.MetaTitle ?? _previewTr.Title)
+                                        </div>
+                                        <div style="color:#1a6f3c;font-size:12px">
+                                            yoursite.com › @_previewTr.Slug
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(_previewTr.MetaDescription))
+                                        {
+                                            <div style="color:#4d5156;font-size:12px;margin-top:4px">
+                                                @(_previewTr.MetaDescription.Length > 160 ? _previewTr.MetaDescription[..160] + "…" : _previewTr.MetaDescription)
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-center text-muted py-5 small">
+                                Önizleme için bir dil seçin
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public Guid PageId { get; set; }
+
+    bool _loading = true, _saving;
+    string _panelMode = "split";
+    string _editorTab = "translations";
+    string _viewport = "desktop";
+    string _activeLang = "tr";
+    string _previewLang = "tr";
+    string _contentSearch = "";
+
+    PageDetailDto? _page;
+    ContentSummaryDto? _linkedContent;
+    List<ContentSummaryDto> _allContents = [];
+
+    // Editable state
+    string _pageType = "Standard";
+    string? _externalUrl, _icon;
+    int _order;
+    bool _isActive, _isVisible;
+
+    sealed class EditableTranslation
+    {
+        public string LanguageCode { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string LinkName { get; set; } = "";
+        public string Slug { get; set; } = "";
+        public string? MetaTitle { get; set; }
+        public string? MetaDescription { get; set; }
+        public string? MetaKeywords { get; set; }
+    }
+
+    Dictionary<string, EditableTranslation> _translations = new();
+    EditableTranslation? _currentTranslation;
+    EditableTranslation? _previewTr => _translations.TryGetValue(_previewLang, out var t) ? t : null;
+
+    string CurrentTitle => _translations.TryGetValue(_activeLang, out var tr) ? tr.Title : PageId.ToString()[..8];
+    string ViewportWidth => _viewport switch { "tablet" => "768px", "mobile" => "375px", _ => "100%" };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await PermSync.SyncIfNeededAsync();
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+
+    List<ContentSummaryDto> contentSummaryDtos => _allContents
+        .Where(c => c.Title.Contains(_contentSearch, StringComparison.OrdinalIgnoreCase) ||
+                    c.Slug.Contains(_contentSearch, StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await PageApiClient.GetPageByIdAsync(PageId);
+        if (r.IsSuccess && r.Data is not null)
+        {
+            _page = r.Data;
+            _pageType = _page.PageType;
+            _externalUrl = _page.ExternalUrl;
+            _icon = _page.Icon;
+            _order = _page.Order;
+            _isActive = _page.IsActive;
+            _isVisible = _page.IsVisible;
+
+            _translations = _page.Translations.ToDictionary(
+                tr => tr.LanguageCode,
+                tr => new EditableTranslation
+                {
+                    LanguageCode = tr.LanguageCode,
+                    Title = tr.Title,
+                    LinkName = tr.LinkName,
+                    Slug = tr.Slug,
+                    MetaTitle = tr.MetaTitle,
+                    MetaDescription = tr.MetaDescription,
+                    MetaKeywords = tr.MetaKeywords,
+                });
+
+            SetLang(_page.Translations.FirstOrDefault()?.LanguageCode ?? "tr");
+
+            if (_page.LinkedContentId.HasValue)
+            {
+                var cr = await ContentApiClient.GetContentByIdAsync(_page.LinkedContentId.Value);
+                if (cr.IsSuccess && cr.Data is not null)
+                {
+                    _linkedContent = new ContentSummaryDto(
+                        cr.Data.Id, cr.Data.Slug, cr.Data.Status, cr.Data.ContentType,
+                        cr.Data.Translations.FirstOrDefault()?.Title ?? "",
+                        cr.Data.Translations.Select(t => t.LanguageCode).ToList(),
+                        cr.Data.CreatedAt, cr.Data.UpdatedAt);
+                }
+            }
+        }
+
+        var cr2 = await ContentApiClient.GetContentsAsync(0, 200);
+        if (cr2.IsSuccess && cr2.Data?.Items is not null)
+            _allContents = cr2.Data.Items;
+
+        _loading = false;
+    }
+
+    void SetLang(string lang)
+    {
+        _activeLang = lang;
+        _previewLang = lang;
+        _currentTranslation = _translations.TryGetValue(lang, out var t) ? t : null;
+    }
+
+    void LinkContent(ContentSummaryDto content)
+    {
+        _linkedContent = content;
+        _contentSearch = "";
+    }
+
+    void UnlinkContent() => _linkedContent = null;
+
+    async Task Save()
+    {
+        _saving = true;
+        bool ok = true;
+
+        // Save each translation
+        foreach (var (lang, tr) in _translations)
+        {
+            var r = await PageApiClient.UpsertPageTranslationAsync(PageId, new UpsertPageTranslationRequest(
+                tr.LanguageCode, tr.Title, tr.LinkName, tr.Slug,
+                tr.MetaTitle, tr.MetaDescription, tr.MetaKeywords));
+            if (!r.IsSuccess) { ok = false; }
+        }
+
+        // Link content
+        // var linkR = await PageApiClient.LinkContentAsync(PageId, new LinkContentApiRequest(_linkedContent?.Id));
+        // if (!linkR.IsSuccess) ok = false;
+
+        _saving = false;
+        if (ok) Toast.Success("Sayfa başarıyla kaydedildi ✓"); else Toast.Warning("Bazı alanlar kaydedilemedi.");
+        StateHasChanged();
+    }
+}

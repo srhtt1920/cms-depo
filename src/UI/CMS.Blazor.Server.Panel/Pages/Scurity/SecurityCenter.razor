@@ -1,0 +1,339 @@
+﻿@page "/security"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+
+        <div class="input-group input-group-sm" style="width:200px">
+            <span class="input-group-text bg-transparent"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" /></svg></span>
+            <input @bind="_search" @bind:event="oninput" type="text" class="form-control" placeholder="Ara..." />
+        </div>
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageTitle>Güvenlik Merkezi — CMS</PageTitle>
+
+<PageHeader Title="Güvenlik Merkezi" Subtitle="Şifre, oturum ve iki faktörlü doğrulama yönetimi" />
+
+
+
+<div class="row g-3">
+    <!-- Şifre Değiştir -->
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center gap-2 mb-4">
+                    <div class="rounded d-flex align-items-center justify-content-center"
+                         style="width:36px;height:36px;background:rgba(99,102,241,.1);font-size:1.2rem">
+                        🔑
+                    </div>
+                    <div>
+                        <div class="fw-semibold">Şifre Değiştir</div>
+                        <div class="text-muted" style="font-size:12px">Hesap güvenliğinizi koruyun</div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Mevcut Şifre</label>
+                    <div class="input-group input-group-sm">
+                        <input @bind="_currentPw" type="@(_showCurrent ? "text" : "password")"
+                               class="form-control" placeholder="••••••••" autocomplete="current-password" />
+                        <button class="btn btn-outline-secondary" type="button"
+                                @onclick="() => _showCurrent = !_showCurrent">
+                            @(_showCurrent ? "🙈" : "👁️")
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Yeni Şifre</label>
+                    <div class="input-group input-group-sm">
+                        <input @bind="_newPw" @bind:event="oninput" @bind:after="CalcStrength"
+                               type="@(_showNew ? "text" : "password")"
+                               class="form-control" placeholder="En az 8 karakter" autocomplete="new-password" />
+                        <button class="btn btn-outline-secondary" type="button"
+                                @onclick="() => _showNew = !_showNew">
+                            @(_showNew ? "🙈" : "👁️")
+                        </button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_newPw))
+                    {
+                        <div class="mt-1">
+                            <div class="d-flex gap-1 mb-1">
+                                @for (int i = 0; i < 4; i++)
+                                {
+                                    var idx = i;
+                                    <div style="height:3px;flex:1;border-radius:2px;
+                                                                background:@(idx<_strength? StrengthColor : "var(--border)")"></div>
+                                }
+                            </div>
+                            <div style="font-size:11px;color:@StrengthColor">@StrengthLabel</div>
+                        </div>
+                    }
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label small fw-medium">Yeni Şifre Tekrar</label>
+                    <input @bind="_confirmPw"
+                           type="password"
+                           class="form-control form-control-sm @(PwMismatch ? "is-invalid" : "")"
+                           placeholder="Şifreyi tekrar girin" autocomplete="new-password" />
+                    @if (PwMismatch)
+                    {
+                        <div class="invalid-feedback">Şifreler eşleşmiyor.</div>
+                    }
+                </div>
+
+                <button class="btn btn-primary btn-sm w-100"
+                        @onclick="ChangePwAsync"
+                        disabled="@(_pwBusy || PwMismatch || _strength < 2 || string.IsNullOrWhiteSpace(_currentPw))">
+                    @if (_pwBusy)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Şifreyi Güncelle
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2FA -->
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <div class="rounded d-flex align-items-center justify-content-center"
+                         style="width:36px;height:36px;background:rgba(34,197,94,.1);font-size:1.2rem">
+                        🛡️
+                    </div>
+                    <div class="flex-fill">
+                        <div class="fw-semibold">İki Faktörlü Doğrulama</div>
+                        <div class="text-muted" style="font-size:12px">TOTP tabanlı ek güvenlik</div>
+                    </div>
+                    <span class="badge @(_2faEnabled ? "bg-success" : "bg-secondary")">
+                        @(_2faEnabled ? "Aktif" : "Pasif")
+                    </span>
+                </div>
+
+                @if (!_2faEnabled && !_setupMode)
+                {
+                    <p class="small text-muted mb-3">
+                        Google Authenticator veya Authy gibi bir uygulama ile ek güvenlik katmanı ekleyin.
+                    </p>
+                    <button class="btn btn-outline-success btn-sm w-100"
+                            @onclick="Begin2faSetupAsync" disabled="@_2faBusy">
+                        @if (_2faBusy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        2FA Kurulumunu Başlat
+                    </button>
+                }
+                else if (_setupMode && _setupData is not null)
+                {
+                    <div class="text-center mb-3">
+                        <div class="small text-muted mb-2">Authenticator uygulamanızla tarayın veya manuel girin:</div>
+                        <div class="p-2 border rounded d-inline-block bg-white mb-2"
+                             style="min-width:140px;min-height:140px;display:flex;align-items:center;justify-content:center">
+                            <!-- Gerçek projede QR bileşeni buraya: <QrCode Value="@_setupData.QrCodeUri" /> -->
+                            <div style="font-size:11px;color:#9ca3af;text-align:center">
+                                📱 QR Kodu<br /><code style="font-size:9px">@_setupData.QrCodeUri[..40]…</code>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-medium">Manuel Anahtar</label>
+                            <div class="input-group input-group-sm" style="max-width:280px;margin:auto">
+                                <input type="text" class="form-control text-center"
+                                       value="@_setupData.ManualKey" readonly
+                                       style="font-family:monospace;letter-spacing:.12em" />
+                                <button class="btn btn-outline-secondary" type="button"
+                                        @onclick='() => JS.InvokeVoidAsync("navigator.clipboard.writeText", _setupData.ManualKey)'>
+                                    📋
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Doğrulama Kodu</label>
+                        <input @bind="_totpCode" type="text" class="form-control form-control-sm text-center"
+                               maxlength="6" placeholder="6 haneli kod"
+                               style="letter-spacing:.3em;font-size:1.3rem;max-width:160px;margin:auto" />
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-success btn-sm flex-fill"
+                                @onclick="Verify2faAsync" disabled="@_2faBusy">
+                            @if (_2faBusy)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Doğrula & Etkinleştir
+                        </button>
+                        <button class="btn btn-ghost btn-sm" @onclick="CancelSetup">İptal</button>
+                    </div>
+                }
+                else if (_2faEnabled)
+                {
+                    <div class="alert alert-success py-2 small mb-3">
+                        ✅ İki faktörlü doğrulama aktif. Hesabınız ekstra güvende.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Mevcut Şifre</label>
+                        <input @bind="_disablePw" type="password"
+                               class="form-control form-control-sm" placeholder="Onaylamak için şifrenizi girin" />
+                    </div>
+                    <button class="btn btn-outline-danger btn-sm w-100"
+                            @onclick="Disable2faAsync"
+                            disabled="@(_2faBusy || string.IsNullOrWhiteSpace(_disablePw))">
+                        @if (_2faBusy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        2FA'yı Devre Dışı Bırak
+                    </button>
+                }
+            </div>
+        </div>
+
+        <!-- Yedek Kodlar -->
+        @if (_setupData?.BackupCodes is { Length: > 0 } codes)
+        {
+            <div class="card border-0 shadow-sm border-warning" style="border-width:1px!important">
+                <div class="card-body p-3">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span style="font-size:1.1rem">🔐</span>
+                        <div class="fw-semibold small">Yedek Kodlar</div>
+                    </div>
+                    <p class="text-muted" style="font-size:11px">
+                        Bu kodları güvenli bir yerde saklayın. 2FA cihazınıza erişemezseniz kullanabilirsiniz.
+                    </p>
+                    <div class="row g-1 mb-2">
+                        @foreach (var backupCode in codes)
+                        {
+                            <div class="col-6">
+                                <code class="d-block text-center p-1 rounded"
+                                      style="background:var(--surface-2);font-size:11px;letter-spacing:.08em">
+                                    @backupCode
+                                </code>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    // Şifre
+    string? _currentPw, _newPw, _confirmPw, _disablePw;
+    bool _showCurrent, _showNew, _pwBusy;
+    int _strength;
+    string _search = "";
+
+    // 2FA
+    bool _2faEnabled, _setupMode, _2faBusy;
+    TwoFactorSetupResponse? _setupData;
+    string? _totpCode;
+
+    bool PwMismatch => !string.IsNullOrEmpty(_confirmPw) && _newPw != _confirmPw;
+    string StrengthColor => _strength switch { 1 => "#ef4444", 2 => "#f59e0b", 3 => "#3b82f6", _ => "#22c55e" };
+    string StrengthLabel => _strength switch { 1 => "Çok zayıf", 2 => "Zayıf", 3 => "Orta", _ => "Güçlü" };
+
+    void CalcStrength()
+    {
+        if (string.IsNullOrEmpty(_newPw)) { _strength = 0; return; }
+        int s = 0;
+        if (_newPw.Length >= 8) s++;
+        if (_newPw.Any(char.IsUpper)) s++;
+        if (_newPw.Any(char.IsDigit)) s++;
+        if (_newPw.Any(c => !char.IsLetterOrDigit(c))) s++;
+        _strength = s;
+    }
+
+    async Task ChangePwAsync()
+    {
+        _pwBusy = true;
+        try
+        {
+            var req = new ChangePasswordRequest(_currentPw!, _newPw!, _confirmPw!);
+            var r = await AuthApiClient.ChangePasswordAsync(req);
+            if (r.IsSuccess)
+            {
+                Toast.Success("Şifreniz başarıyla güncellendi.");
+                _currentPw = _newPw = _confirmPw = null; _strength = 0;
+            }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _pwBusy = false; }
+    }
+
+    async Task Begin2faSetupAsync()
+    {
+        _2faBusy = true;
+        try
+        {
+            var r = await AuthApiClient.TwoFactorSetupAsync();
+            if (r.IsSuccess) { _setupData = r.Data!; _setupMode = true; }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _2faBusy = false; }
+    }
+
+    async Task Verify2faAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_totpCode)) return;
+        _2faBusy = true;
+        try
+        {
+            // Verify endpoint doğrulama sonrası token döner, biz burada sadece enable onayı yapıyoruz
+            // Setup flow'unda email session'dan gelir
+            var email = AppState.Session.Email ?? "";
+            var req = new TwoFactorVerifyRequest(_totpCode!, email);
+            var r = await AuthApiClient.TwoFactorVerifyAsync(req);
+            if (r.IsSuccess)
+            {
+                _2faEnabled = true; _setupMode = false;
+                Toast.Success("2FA başarıyla etkinleştirildi! Yedek kodlarınızı kaydedin.");
+            }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _2faBusy = false; }
+    }
+
+    async Task Disable2faAsync()
+    {
+        _2faBusy = true;
+        try
+        {
+            var req = new TwoFactorDisableRequest(_disablePw!);
+            var r = await AuthApiClient.TwoFactorDisableAsync(req);
+            if (r.IsSuccess) { _2faEnabled = false; _disablePw = null; Toast.Warning("2FA devre dışı bırakıldı."); }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _2faBusy = false; }
+    }
+
+    void CancelSetup() { _setupMode = false; _setupData = null; _totpCode = null; }
+}

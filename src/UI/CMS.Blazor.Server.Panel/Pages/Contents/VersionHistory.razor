@@ -1,0 +1,444 @@
+﻿@page "/contents/{Id:guid}/versions"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Versiyon Geçmişi — CMS</PageTitle>
+@if (!AppState.Session.Can("content.read"))
+{
+    <AccessDenied />
+    return;
+}
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else
+{
+    <PageHeader Title="@($"Versiyon Geçmişi — {_slug}")">
+        <Actions>
+            <button class="btn btn-outline-secondary btn-sm"
+                    @onclick='() => Nav.NavigateTo($"/contents/{Id}/edit")'>
+                ← İçeriğe Dön
+            </button>
+        </Actions>
+    </PageHeader>
+
+
+
+    <div class="row g-3">
+        <!-- Sol: versiyon listesi -->
+        <div class="col-12 col-lg-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                    <span class="fw-semibold small">Versiyonlar</span>
+                    <span class="badge bg-secondary">@_versions.Count</span>
+                </div>
+                <div class="list-group list-group-flush" style="max-height:70vh;overflow-y:auto">
+                    @foreach (var v in _versions.OrderByDescending(x => x.VersionNumber))
+                    {
+                        var ver = v;
+                        var isA = _compareA?.Id == ver.Id;
+                        var isB = _compareB?.Id == ver.Id;
+                        var isSelected = _selected?.Id == ver.Id;
+                        <div class="list-group-item list-group-item-action p-0" style="cursor:pointer">
+                            <div class="d-flex align-items-start gap-2 p-2 @(isSelected ? "bg-version-active" : "")"
+                                 style="@(isSelected ? "background:var(--brand-light)" : "")">
+                                <!-- compare checkboxes -->
+                                <div class="d-flex flex-column gap-1 pt-1" style="min-width:20px">
+                                    <input type="checkbox" class="form-check-input" style="width:13px;height:13px"
+                                           title="A ile karşılaştır"
+                                           checked="@isA"
+                                           @onchange="() => ToggleCompareA(ver)" />
+                                    <input type="checkbox" class="form-check-input" style="width:13px;height:13px"
+                                           title="B ile karşılaştır"
+                                           checked="@isB"
+                                           @onchange="() => ToggleCompareB(ver)" />
+                                </div>
+                                <div class="flex-fill" @onclick="() => SelectVersion(ver)">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge bg-secondary" style="font-size:10px">
+                                            v@ver.VersionNumber
+                                        </span>
+                                        @if (ver.IsPublished)
+                                        {
+                                            <span class="badge bg-success" style="font-size:10px">Yayında</span>
+                                        }
+                                        @if (ver.Label is not null)
+                                        {
+                                            <span class="text-muted" style="font-size:11px">@ver.Label</span>
+                                        }
+                                    </div>
+                                    <div style="font-size:11px;color:var(--text-3);margin-top:2px">
+                                        @ver.CreatedAt.ToString("dd MMM yyyy HH:mm")
+                                    </div>
+                                </div>
+                                @if (AppState.Session.Can("content.edit") && !ver.IsPublished)
+                                {
+                                    <button class="btn btn-link btn-sm p-0 text-primary" style="font-size:11px"
+                                            title="Bu versiyona geri dön"
+                                            @onclick="() => ConfirmRestore(ver)"
+                                            @onclick:stopPropagation>
+                                        ↩ Geri Yükle
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                    @if (!_versions.Any())
+                    {
+                        <div class="text-center text-muted py-4 small">Versiyon bulunamadı</div>
+                    }
+                </div>
+            </div>
+
+            <!-- Karşılaştırma paneli -->
+            @if (_compareA is not null || _compareB is not null)
+            {
+                <div class="card border-0 shadow-sm mt-3">
+                    <div class="card-header bg-transparent py-2 px-3">
+                        <span class="fw-semibold small">Karşılaştır</span>
+                    </div>
+                    <div class="card-body py-2 px-3">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <span class="badge bg-primary" style="font-size:10px">A</span>
+                            <span class="small">@(_compareA is null ? "—" : $"v{_compareA.VersionNumber}")</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <span class="badge bg-warning text-dark" style="font-size:10px">B</span>
+                            <span class="small">@(_compareB is null ? "—" : $"v{_compareB.VersionNumber}")</span>
+                        </div>
+                        @if (_compareA is not null && _compareB is not null)
+                        {
+                            <button class="btn btn-sm btn-primary w-100" @onclick="RunDiff">
+                                Karşılaştır →
+                            </button>
+                        }
+                        <button class="btn btn-sm btn-link w-100 mt-1" @onclick="ClearCompare">
+                            Temizle
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Sağ: versiyon detay / diff -->
+        <div class="col-12 col-lg-8">
+            @if (_showDiff && _diffLines.Any())
+            {
+                <!-- Diff Viewer -->
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                        <span class="fw-semibold small">
+                            Diff — v@_compareA!.VersionNumber vs v@_compareB!.VersionNumber
+                        </span>
+                        <div class="d-flex gap-2">
+                            <span class="badge bg-success" style="font-size:10px">+@_diffAdded eklendi</span>
+                            <span class="badge bg-danger" style="font-size:10px">-@_diffRemoved silindi</span>
+                            <button class="btn-ghost btn-icon" style="width:24px;height:24px"
+                                    @onclick="() => _showDiff = false" title="Kapat">
+                                <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0" style="max-height:60vh;overflow-y:auto;font-family:var(--font-mono);font-size:12px">
+                        @foreach (var line in _diffLines)
+                        {
+                            <div class="diff-line @line.Css" style="@line.Style;padding:1px 12px;white-space:pre-wrap;line-height:1.6">
+                                <span class="diff-marker me-2">@line.Marker</span>@line.Text
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            else if (_selected is not null)
+            {
+                <!-- Tek versiyon önizleme -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="fw-semibold small">v@_selected.VersionNumber Önizleme</span>
+                            @if (_selected.IsPublished)
+                            {
+                                <span class="badge bg-success" style="font-size:10px">Yayında</span>
+                            }
+                            @if (_selected.Label is not null)
+                            {
+                                <span class="text-muted" style="font-size:11px">@_selected.Label</span>
+                            }
+                        </div>
+                        <span class="text-muted" style="font-size:11px">
+                            @_selected.CreatedAt.ToString("dd MMM yyyy HH:mm")
+                        </span>
+                    </div>
+                    <div class="card-body">
+                        @if (_previewLoading)
+                        {
+                            <div class="text-center py-3">
+                                <div class="spinner-border spinner-border-sm" style="color:var(--accent)"></div>
+                            </div>
+                        }
+                        else
+                        {
+                            <!-- Dil sekmeleri -->
+                            @if (_previewTranslations.Any())
+                            {
+                                <ul class="nav nav-tabs nav-tabs-sm mb-3">
+                                    @foreach (var tr in _previewTranslations)
+                                    {
+                                        var lang = tr.LanguageCode;
+                                        <li class="nav-item">
+                                            <button class="nav-link @(_previewLang == lang ? "active" : "")"
+                                                    style="font-size:12px;padding:4px 10px"
+                                                    @onclick="() => _previewLang = lang">
+                                                @lang.ToUpper()
+                                            </button>
+                                        </li>
+                                    }
+                                </ul>
+                                var cur = _previewTranslations.FirstOrDefault(t => t.LanguageCode == _previewLang)
+                                ?? _previewTranslations.First();
+                                <div class="mb-2">
+                                    <label class="form-label small text-muted">Başlık</label>
+                                    <div class="fw-medium" style="font-size:14px">@cur.Title</div>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small text-muted">İçerik</label>
+                                    <div class="border rounded p-2" style="font-size:13px;max-height:300px;overflow-y:auto;background:var(--surface-1)">
+                                        @((MarkupString)(cur.Body ?? ""))
+                                    </div>
+                                </div>
+                                @if (!string.IsNullOrEmpty(cur.MetaTitle))
+                                {
+                                    <div class="mb-1">
+                                        <label class="form-label small text-muted">Meta Başlık</label>
+                                        <div class="small">@cur.MetaTitle</div>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(cur.MetaDescription))
+                                {
+                                    <div class="mb-1">
+                                        <label class="form-label small text-muted">Meta Açıklama</label>
+                                        <div class="small text-muted">@cur.MetaDescription</div>
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <p class="text-muted small text-center py-3">Bu versiyon için önizleme verisi yüklenemedi.</p>
+                            }
+                        }
+                    </div>
+                    @if (AppState.Session.Can("content.edit") && !_selected.IsPublished)
+                    {
+                        <div class="card-footer bg-transparent py-2 px-3">
+                            <button class="btn btn-sm btn-warning" @onclick="() => ConfirmRestore(_selected)" disabled="@_restoring">
+                                @if (_restoring)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                ↩ Bu Versiyona Geri Yükle
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="d-flex flex-column align-items-center justify-content-center text-muted"
+                     style="min-height:300px;border:2px dashed var(--border);border-radius:var(--r-lg)">
+                    <svg width="40" height="40" fill="currentColor" viewBox="0 0 16 16" class="mb-3 opacity-50">
+                        <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z" />
+                    </svg>
+                    <p class="small">Soldan bir versiyon seçin veya iki versiyonu karşılaştırın</p>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<!-- Restore Confirm Modal -->
+@if (_restoreTarget is not null)
+{
+    <div class="modal-backdrop-blur" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1040"
+         @onclick="() => _restoreTarget = null"></div>
+    <div class="modal fade show d-block" tabindex="-1" style="z-index:1050">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-0 pb-0">
+                    <h6 class="modal-title fw-semibold">Versiyona Geri Yükle</h6>
+                    <button type="button" class="btn-close" @onclick="() => _restoreTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">
+                        <strong>v@_restoreTarget.VersionNumber</strong> versiyonu geri yüklenecek.
+                        Bu işlem mevcut içeriğin üzerine yazacak ve yeni bir versiyon oluşturacak.
+                        Devam etmek istiyor musunuz?
+                    </p>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _restoreTarget = null">İptal</button>
+                    <button class="btn btn-sm btn-warning" @onclick="DoRestore" disabled="@_restoring">
+                        @if (_restoring)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Geri Yükle
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    string _slug = "";
+    bool _loading = true, _restoring, _previewLoading, _showDiff;
+    string _previewLang = "";
+
+    List<ContentVersionDto> _versions = [];
+    ContentVersionDto? _selected, _restoreTarget, _compareA, _compareB;
+    List<ContentDetailTranslationDto> _previewTranslations = [];
+
+    // Diff
+    List<DiffLine> _diffLines = [];
+    int _diffAdded, _diffRemoved;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await PermSync.SyncIfNeededAsync();
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    async Task LoadAsync()
+    {
+        _loading = true;
+        var content = await ContentApiClient.GetContentByIdAsync(Id);
+        if (content.IsSuccess && content.Data is not null)
+            _slug = content.Data.Slug;
+
+        var r = await ContentApiClient.GetVersionsAsync(Id);
+        if (r.IsSuccess && r.Data is not null)
+            _versions = r.Data;
+
+        _loading = false;
+    }
+
+    async Task SelectVersion(ContentVersionDto v)
+    {
+        _selected = v;
+        _showDiff = false;
+        _previewTranslations = [];
+        _previewLang = "";
+        _previewLoading = true;
+        StateHasChanged();
+
+        // Load content detail for that "version" — we use current detail as proxy
+        // In a real implementation you'd have GET /api/contents/{id}/versions/{num}
+        var r = await ContentApiClient.GetContentByIdAsync(Id);
+        if (r.IsSuccess && r.Data is not null)
+        {
+            _previewTranslations = r.Data.Translations;
+            _previewLang = _previewTranslations.FirstOrDefault()?.LanguageCode ?? "";
+        }
+        _previewLoading = false;
+        StateHasChanged();
+    }
+
+    void ToggleCompareA(ContentVersionDto v)
+    {
+        _compareA = _compareA?.Id == v.Id ? null : v;
+        _showDiff = false;
+    }
+
+    void ToggleCompareB(ContentVersionDto v)
+    {
+        _compareB = _compareB?.Id == v.Id ? null : v;
+        _showDiff = false;
+    }
+
+    void ClearCompare()
+    {
+        _compareA = null;
+        _compareB = null;
+        _showDiff = false;
+        _diffLines = [];
+    }
+
+    void RunDiff()
+    {
+        if (_compareA is null || _compareB is null) return;
+
+        // Simulated diff — in production fetch version bodies from API
+        var aText = $"Versiyon {_compareA.VersionNumber}\nYayında: {_compareA.IsPublished}\nTarih: {_compareA.CreatedAt:yyyy-MM-dd HH:mm}\nEtiket: {_compareA.Label ?? "(yok)"}";
+        var bText = $"Versiyon {_compareB.VersionNumber}\nYayında: {_compareB.IsPublished}\nTarih: {_compareB.CreatedAt:yyyy-MM-dd HH:mm}\nEtiket: {_compareB.Label ?? "(yok)"}";
+
+        _diffLines = ComputeDiff(aText, bText);
+        _diffAdded = _diffLines.Count(l => l.Type == "add");
+        _diffRemoved = _diffLines.Count(l => l.Type == "del");
+        _showDiff = true;
+    }
+
+    static List<DiffLine> ComputeDiff(string a, string b)
+    {
+        var aLines = a.Split('\n');
+        var bLines = b.Split('\n');
+        var result = new List<DiffLine>();
+
+        int i = 0, j = 0;
+        while (i < aLines.Length || j < bLines.Length)
+        {
+            if (i < aLines.Length && j < bLines.Length && aLines[i] == bLines[j])
+            {
+                result.Add(new DiffLine("ctx", " ", aLines[i],
+                    "background:transparent", ""));
+                i++; j++;
+            }
+            else if (i < aLines.Length && (j >= bLines.Length || !bLines.Contains(aLines[i])))
+            {
+                result.Add(new DiffLine("del", "-", aLines[i],
+                    "background:#fef2f2;color:#c0392b", "diff-del"));
+                i++;
+            }
+            else
+            {
+                result.Add(new DiffLine("add", "+", bLines[j],
+                    "background:#ecfdf5;color:#1a7a45", "diff-add"));
+                j++;
+            }
+        }
+        return result;
+    }
+
+    void ConfirmRestore(ContentVersionDto v) => _restoreTarget = v;
+
+    async Task DoRestore()
+    {
+        if (_restoreTarget is null) return;
+        _restoring = true;
+        var r = await ContentApiClient.RestoreVersionAsync(Id, _restoreTarget.VersionNumber);
+        _restoring = false;
+        _restoreTarget = null;
+
+        if (r.IsSuccess)
+        {
+            Toast.Success($"v{(_restoreTarget ?? _selected)?.VersionNumber} başarıyla geri yüklendi.");
+            await LoadAsync();
+        }
+        else
+        {
+            Toast.Error(r.Error?.Message ?? "Geri yükleme başarısız.");
+        }
+        StateHasChanged();
+    }
+
+    sealed record DiffLine(string Type, string Marker, string Text, string Style, string Css);
+}

@@ -1,0 +1,39 @@
+@page "/"
+@using CMS.Blazor.Server.Panel
+@using Microsoft.AspNetCore.Components.Web
+@namespace CMS.Blazor.Management.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="~/" />
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+    <!-- Bootstrap 5 + Icons + Fonts -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="css/site.css" rel="stylesheet" />
+    <component type="typeof(HeadOutlet)" render-mode="Server" />
+    <!--
+      cms-prefs.js HEAD'de yüklenir — sayfa içeriği render edilmeden önce.
+      cmsPrefs.applyAll() → data-bs-theme, data-menu-theme, data-size-mode, lang
+      attribute'larını cookie'den okuyup anında uygular.
+      Bu FOUC (Flash Of Unstyled Content) önler.
+    -->
+    <script src="js/cms-prefs.js"></script>
+</head>
+<body>
+    <component type="typeof(App)" render-mode="Server" />
+    <div id="blazor-error-ui">
+        <environment include="Staging,Production">Bir hata oluştu. Sayfayı yenileyin.</environment>
+        <environment include="Development">İşlenmeyen bir hata oluştu. Konsolu kontrol edin.</environment>
+        <a href="" class="reload">Yenile</a>
+        <a class="dismiss">✕</a>
+    </div>
+    <script src="_framework/blazor.server.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

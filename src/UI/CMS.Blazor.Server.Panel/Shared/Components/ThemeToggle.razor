@@ -1,0 +1,20 @@
+<button class="btn-ghost btn-icon"
+        title="@(AppState.Preferences.Theme == "dark" ? "Aydınlık mod" : "Karanlık mod")"
+        @onclick="Toggle">
+    @if (AppState.Preferences.Theme == "dark")
+    {
+        <SvgIcon Name="icon-sun" Size="15" />
+    }
+    else
+    {
+        <SvgIcon Name="icon-moon" Size="15" />
+    }
+</button>
+
+@code {
+    async Task Toggle()
+    {
+        var next = AppState.Preferences.Theme == "light" ? "dark" : "light";
+        await AppState.SetThemeAsync(next);
+    }
+}

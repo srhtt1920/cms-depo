@@ -1,0 +1,16 @@
+﻿@{
+    var (bg, label) = Status switch
+    {
+        "Published" => ("bg-success", "Yayında"),
+        "Draft" => ("bg-secondary", "Taslak"),
+        "Scheduled" => ("bg-warning text-dark", "Zamanlandı"),
+        "Expired" => ("bg-danger", "Süresi Doldu"),
+        "Archived" => ("bg-dark", "Arşiv"),
+        _ => ("bg-secondary", Status ?? ""),
+    };
+}
+<span class="badge @bg" style="font-size:10px;font-weight:500">@label</span>
+
+@code {
+    [Parameter, EditorRequired] public string? Status { get; set; }
+}

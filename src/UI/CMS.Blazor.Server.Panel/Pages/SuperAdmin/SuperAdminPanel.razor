@@ -1,0 +1,1091 @@
+﻿@page "/superadmin"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>SuperAdmin — CMS</PageTitle>
+
+@* Superadmin olmayan kişiler bu sayfaya erişemez — 404 gibi görünür *@
+@if (!Guard.IsSuperAdmin)
+{
+    <div class="d-flex flex-column align-items-center justify-content-center text-muted"
+         style="min-height:60vh">
+        <h2 style="font-size:80px;margin:0;line-height:1;opacity:.15">404</h2>
+        <p class="small">Bu sayfa bulunamadı.</p>
+    </div>
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+<SearchBox @bind-Value="_search" />
+<IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+        
+    </div>
+</div>
+
+<PageHeader Title="⚡ SuperAdmin Paneli">
+    <Actions>
+        <span class="badge bg-danger" style="font-size:11px;padding:5px 10px">
+            🔴 SUPERADMIN MODU
+        </span>
+        <button class="btn-ghost btn-icon" title="Yenile" @onclick="LoadAsync">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+            </svg>
+        </button>
+    </Actions>
+</PageHeader>
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--red)"></div>
+    </div>
+}
+else
+{
+    <!-- ── Tab navigasyonu ───────────────────────────────────────────── -->
+    <ul class="nav nav-tabs mb-4">
+        <li class="nav-item">
+            <button class="nav-link @(_tab == "admins" ? "active" : "")" @onclick='() => _tab = "admins"'>
+                👤 SuperAdminler
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_tab == "tenants" ? "active" : "")" @onclick='() => _tab = "tenants"'>
+                🏢 Tenant Yönetimi
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_tab == "transfer" ? "active" : "")" @onclick='() => _tab = "transfer"'>
+                🔀 Kullanıcı Transferi
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_tab == "audit" ? "active" : "")" @onclick='() => _tab = "audit"'>
+                📋 SuperAdmin Audit
+            </button>
+        </li>
+    </ul>
+
+    <!-- ═══ TAB: SUPERADMIN YÖNETİMİ ════════════════════════════════ -->
+    @if (_tab == "admins")
+    {
+        <div class="row g-3">
+            <div class="col-12 col-lg-8">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-danger text-white py-2 px-3 d-flex align-items-center justify-content-between">
+                        <span class="fw-semibold small">Hayalet Süper Adminler</span>
+                        <button class="btn btn-sm btn-light text-danger"
+                                style="font-size:11px" @onclick="() => _grantModal = true">
+                            + Yetki Ver
+                        </button>
+                    </div>
+                    <div class="alert alert-warning py-2 small m-3 mb-0">
+                        ⚠ Bu kullanıcılar <strong>diğer kullanıcılar tarafından görülmez</strong>.
+                        Logda yalnızca <code>superadmin</code> olarak görünür.
+                        Tüm izinlere otomatik sahiptir, role listesinde gösterilmez.
+                    </div>
+                    <div class="table-responsive">
+                        <table class="cms-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th><div class="th-inner">Kullanıcı</div></th>
+                                    <th><div class="th-inner">Yetki Tarihi</div></th>
+                                    <th><div class="th-inner">Veren</div></th>
+                                    <th><div class="th-inner">Durum</div></th>
+                                    <th style="width:80px"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var admin in _superAdmins)
+                                {
+                                    var a = admin;
+                                    var isSelf = a.UserId == AppState.Session.UserId;
+                                    <tr>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <div class="sa-avatar">⚡</div>
+                                                <div>
+                                                    <div class="fw-medium" style="font-size:12px">
+                                                        @(a.DisplayName ?? a.Email)
+                                                    </div>
+                                                    <div class="text-muted" style="font-size:10px">@a.Email</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td><small class="text-muted">@a.GrantedAt.ToString("dd MMM yyyy HH:mm")</small></td>
+                                        <td><small class="text-muted">@a.GrantedByEmail</small></td>
+                                        <td>
+                                            @if (a.IsActive)
+                                            {
+                                                <span class="badge bg-success" style="font-size:10px">Aktif</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary" style="font-size:10px">Pasif</span>
+                                            }
+                                            @if (isSelf)
+                                            {
+                                                <span class="badge bg-primary ms-1" style="font-size:9px">Sen</span>
+                                            }
+                                        </td>
+                                        <td class="text-end">
+                                            @if (!isSelf)
+                                            {
+                                                <button class="btn btn-link btn-sm p-0 text-danger"
+                                                        style="font-size:11px"
+                                                        @onclick="() => ConfirmRevoke(a)">
+                                                    Yetkiyi Al
+                                                </button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                                @if (!_superAdmins.Any())
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-4 small">
+                                            Kayıtlı superadmin bulunamadı
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-4">
+                <div class="card border-0 shadow-sm border-danger" style="border-width:2px!important">
+                    <div class="card-header bg-transparent py-2 px-3">
+                        <span class="fw-semibold small text-danger">SuperAdmin Özellikleri</span>
+                    </div>
+                    <div class="card-body py-2 px-3">
+                        <ul class="small mb-0" style="padding-left:18px;line-height:2">
+                            <li>Tüm izinlere otomatik sahip</li>
+                            <li>Silinmez, pasif edilemez</li>
+                            <li>Kullanıcı listesinde <strong>görünmez</strong></li>
+                            <li>Rol listesinde <strong>görünmez</strong></li>
+                            <li>Logda <code>superadmin</code> olarak görünür</li>
+                            <li>Tüm tenant'lara erişebilir</li>
+                            <li>Bakım modunda giriş yapabilir</li>
+                            <li>Kilitli içerikleri düzenleyebilir</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- ═══ TAB: TENANT YÖNETİMİ ════════════════════════════════════ -->
+    else if (_tab == "tenants")
+    {
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                <span class="fw-semibold small">Tüm Tenantlar</span>
+                <input type="text" class="form-control form-control-sm" style="width:200px"
+                       placeholder="Tenant ara..." @bind="_tenantSearch" @bind:event="oninput" />
+            </div>
+            <div class="table-responsive">
+                <table class="cms-table mb-0">
+                    <thead>
+                        <tr>
+                            <th><div class="th-inner">Tenant</div></th>
+                            <th><div class="th-inner">Kullanıcı</div></th>
+                            <th><div class="th-inner">İçerik</div></th>
+                            <th><div class="th-inner">Durum</div></th>
+                            <th><div class="th-inner">Bakım</div></th>
+                            <th style="width:160px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in FilteredTenants)
+                        {
+                            var tenant = t;
+                            <tr>
+                                <td>
+                                    <div class="fw-medium" style="font-size:13px">@t.Name</div>
+                                    <div class="mono text-muted" style="font-size:10px">@t.Id.ToString()[..8]…</div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary" style="font-size:10px">
+                                        @t.UserCount kullanıcı
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary" style="font-size:10px">
+                                        @t.ContentCount içerik
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (t.IsActive)
+                                    {
+                                        <span class="badge bg-success" style="font-size:10px">Aktif</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger" style="font-size:10px">Pasif</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (t.Maintenance?.IsMaintenanceMode == true)
+                                    {
+                                        <span class="badge bg-warning text-dark" style="font-size:10px">
+                                            🔧 Bakım Modu
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted" style="font-size:10px">—</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <div class="d-flex gap-1 justify-content-end">
+                                        <button class="btn btn-sm @(t.IsActive ? "btn-outline-danger" : "btn-outline-success")"
+                                                style="font-size:10px"
+                                                @onclick='() => OpenTenantStatus(tenant, tenant.IsActive ? TenantStatus.Suspended : TenantStatus.Active)'>
+                                            @(t.IsActive ? "Pasifleştir" : "Aktifleştir")
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-warning"
+                                                style="font-size:10px"
+                                                @onclick="() => OpenMaintenance(tenant)">
+                                            🔧 Bakım
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-secondary"
+                                                style="font-size:10px"
+                                                @onclick="() => OpenTenantUsers(tenant)">
+                                            👥
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                        @if (!FilteredTenants.Any())
+                        {
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4 small">Tenant bulunamadı</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tenant Kullanıcıları (expandable) -->
+        @if (_selectedTenant is not null)
+        {
+            <div class="card border-0 shadow-sm mt-3">
+                <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                    <span class="fw-semibold small">👥 @_selectedTenant.Name — Kullanıcılar</span>
+                    <button class="btn-ghost btn-icon" style="width:22px;height:22px"
+                            @onclick="() => _selectedTenant = null">
+                        ✕
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    @foreach (var user in _selectedTenant.Users)
+                    {
+                        var u = user;
+                        <div class="d-flex align-items-center gap-2 px-3 py-2 border-bottom">
+                            <div class="flex-fill">
+                                <div class="small fw-medium">@(u.DisplayName ?? u.Email)</div>
+                                <div class="text-muted" style="font-size:10px">@u.Email</div>
+                                <div class="d-flex gap-1 mt-1">
+                                    @foreach (var r in u.Roles)
+                                    {
+                                        <span class="badge bg-secondary" style="font-size:9px">@r</span>
+                                    }
+                                </div>
+                            </div>
+                            @if (!u.IsActive)
+                            {
+                                <span class="badge bg-danger" style="font-size:10px">Pasif</span>
+                            }
+                            <button class="btn btn-sm btn-outline-primary"
+                                    style="font-size:10px"
+                                    @onclick="() => PreSelectTransfer(u, _selectedTenant)">
+                                Transfer Et
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+
+    <!-- ═══ TAB: KULLANICI TRANSFERİ ════════════════════════════════ -->
+    else if (_tab == "transfer")
+    {
+        <div class="row g-3">
+            <div class="col-12 col-lg-5">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-transparent py-2 px-3">
+                        <span class="fw-semibold small">Transfer Kurulum</span>
+                    </div>
+                    <div class="card-body">
+                        <!-- Kaynak tenant -->
+                        <div class="mb-3">
+                            <label class="form-label small fw-medium">Kaynak Tenant *</label>
+                            <select class="form-select form-select-sm"
+                                    @bind="_transferSourceTenantId"
+                                    @bind:after="OnSourceTenantChanged">
+                                <option value="">Kaynak tenant seçin…</option>
+                                @foreach (var t in _tenantDetails)
+                                {
+                                    <option value="@t.Id">@t.Name (@t.UserCount kullanıcı)</option>
+                                }
+                            </select>
+                        </div>
+
+                        <!-- Kullanıcı -->
+                        <div class="mb-3">
+                            <label class="form-label small fw-medium">Transfer Edilecek Kullanıcı *</label>
+                            @if (_transferSourceTenantId == Guid.Empty)
+                            {
+                                <div class="text-muted small">Önce kaynak tenant seçin</div>
+                            }
+                            else
+                            {
+                                <select class="form-select form-select-sm"
+                                        @bind="_transferUserId"
+                                        @bind:after="LoadTransferPreview">
+                                    <option value="">Kullanıcı seçin…</option>
+                                    @{
+                                        var srcTenant = _tenantDetails.FirstOrDefault(t => t.Id == _transferSourceTenantId);
+                                    }
+                                    @foreach (var u in srcTenant?.Users ?? [])
+                                    {
+                                        <option value="@u.UserId">@(u.DisplayName ?? u.Email)</option>
+                                    }
+                                </select>
+                            }
+                        </div>
+
+                        <!-- Hedef tenant -->
+                        <div class="mb-3">
+                            <label class="form-label small fw-medium">Hedef Tenant *</label>
+                            <select class="form-select form-select-sm" @bind="_transferTargetTenantId">
+                                <option value="">Hedef tenant seçin…</option>
+                                @foreach (var t in _tenantDetails.Where(t => t.Id != _transferSourceTenantId))
+                                {
+                                    <option value="@t.Id">@t.Name</option>
+                                }
+                            </select>
+                        </div>
+
+                        <!-- Hedef roller -->
+                        <div class="mb-3">
+                            <label class="form-label small fw-medium">Hedef Tenant'taki Roller</label>
+                            <div class="border rounded-2 p-2" style="max-height:120px;overflow-y:auto">
+                                @foreach (var role in _allRoles.Where(r => !SuperAdminClaims.IsSuperAdminRole(r.Name)))
+                                {
+                                    var r = role;
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox"
+                                               id="role_@r.Id"
+                                               checked="@_transferRoleIds.Contains(r.Id)"
+                                               @onchange="() => ToggleTransferRole(r.Id)" />
+                                        <label class="form-check-label small" for="role_@r.Id">@r.Name</label>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-3 mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox"
+                                       @bind="_transferKeepSource" id="chkKeepSrc" />
+                                <label class="form-check-label small" for="chkKeepSrc">
+                                    Kaynak erişimi koru
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox"
+                                       @bind="_transferContent" id="chkContent" />
+                                <label class="form-check-label small" for="chkContent">
+                                    İçerikleri de taşı
+                                </label>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary w-100"
+                                @onclick="ExecuteTransfer"
+                                disabled="@(!CanExecuteTransfer || _transferring)">
+                            @if (_transferring)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Transferi Başlat
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transfer Preview -->
+            <div class="col-12 col-lg-7">
+                @if (_transferPreview is not null)
+                {
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-transparent py-2 px-3">
+                            <span class="fw-semibold small">Transfer Önizlemesi</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <div class="border rounded-2 p-2 text-center" style="background:var(--surface-1)">
+                                        <div class="text-muted small">Kaynak</div>
+                                        <div class="fw-semibold">@_transferPreview.SourceTenantName</div>
+                                        <div class="d-flex gap-1 justify-content-center mt-1">
+                                            @foreach (var r in _transferPreview.CurrentRoles)
+                                            {
+                                                <span class="badge bg-secondary" style="font-size:9px">@r</span>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="border rounded-2 p-2 text-center border-primary"
+                                         style="background:var(--brand-light)">
+                                        <div class="text-muted small">Hedef</div>
+                                        <div class="fw-semibold">
+                                            @(_tenantDetails.FirstOrDefault(t => t.Id == _transferTargetTenantId)?.Name ?? "—")
+                                        </div>
+                                        <div class="d-flex gap-1 justify-content-center mt-1">
+                                            @foreach (var rid in _transferRoleIds)
+                                            {
+                                                var role = _allRoles.FirstOrDefault(r => r.Id == rid);
+                                                if (role is not null)
+                                                {
+                                                    <span class="badge bg-primary" style="font-size:9px">@role.Name</span>
+                                                }
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Kullanıcı bilgisi -->
+                            <div class="d-flex align-items-center gap-3 p-3 border rounded-2 mb-3"
+                                 style="background:var(--surface-1)">
+                                <div class="sa-avatar">👤</div>
+                                <div>
+                                    <div class="fw-medium">@(_transferPreview.DisplayName ?? _transferPreview.Email)</div>
+                                    <div class="text-muted small">@_transferPreview.Email</div>
+                                </div>
+                                <div class="ms-auto d-flex gap-2">
+                                    <div class="text-center">
+                                        <div class="fw-semibold">@_transferPreview.OwnedContentCount</div>
+                                        <div class="text-muted" style="font-size:10px">İçerik</div>
+                                    </div>
+                                    @if (_transferPreview.HasActiveSession)
+                                    {
+                                        <span class="badge bg-warning text-dark" style="font-size:10px">
+                                            Aktif Oturum
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+
+                            @if (_transferPreview.HasActiveSession)
+                            {
+                                <div class="alert alert-warning py-2 small">
+                                    ⚠ Kullanıcının aktif oturumu var. Transfer sonrası oturum sona erecek.
+                                </div>
+                            }
+                            @if (_transferPreview.OwnedContentCount > 0 && _transferContent)
+                            {
+                                <div class="alert alert-info py-2 small">
+                                    ℹ @_transferPreview.OwnedContentCount içerik hedef tenanta taşınacak.
+                                </div>
+                            }
+                            @if (_transferResult is not null)
+                            {
+                                <div class="alert alert-@(_transferResult.Success ? "success" : "danger") py-2 small">
+                                    @_transferResult.Message
+                                    @if (_transferResult.ContentTransferred > 0)
+                                    {
+                                        <div>@_transferResult.ContentTransferred içerik taşındı.</div>
+                                    }
+                                    @foreach (var w in _transferResult.Warnings)
+                                    {
+                                        <div class="text-warning">⚠ @w</div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="d-flex flex-column align-items-center justify-content-center text-muted"
+                         style="min-height:300px;border:2px dashed var(--border);border-radius:var(--r-lg)">
+                        <span style="font-size:48px;opacity:.2">🔀</span>
+                        <p class="small mt-2">Kaynak tenant ve kullanıcı seçildiğinde önizleme görünür</p>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- ═══ TAB: AUDIT LOG ═══════════════════════════════════════════ -->
+    else if (_tab == "audit")
+    {
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent py-2 px-3">
+                <span class="fw-semibold small">SuperAdmin Audit Trail</span>
+            </div>
+            <div class="table-responsive">
+                <table class="cms-table mb-0">
+                    <thead>
+                        <tr>
+                            <th><div class="th-inner">İşlem</div></th>
+                            <th><div class="th-inner">Entity</div></th>
+                            <th><div class="th-inner">Detay</div></th>
+                            <th><div class="th-inner">IP</div></th>
+                            <th><div class="th-inner">Tarih</div></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var log in _auditLogs)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="badge" style="font-size:10px;background:@AuditColor(log.Action);color:#fff">
+                                        @log.Action
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="small">@log.EntityType</div>
+                                    @if (!string.IsNullOrEmpty(log.EntityId))
+                                    {
+                                        <code class="text-muted" style="font-size:10px">@log.EntityId[..Math.Min(8, log.EntityId.Length)]…</code>
+                                    }
+                                </td>
+                                <td>
+                                    <small class="text-muted">@log.Details</small>
+                                </td>
+                                <td><code style="font-size:10px">@log.IpAddress</code></td>
+                                <td><small class="text-muted">@log.CreatedAt.ToString("dd MMM HH:mm")</small></td>
+                            </tr>
+                        }
+                        @if (!_auditLogs.Any())
+                        {
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4 small">Log kaydı bulunamadı</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+<!-- ── Grant SuperAdmin Modal ─────────────────────────────────────── -->
+@if (_grantModal)
+{
+    <div class="modal-backdrop-blur" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1040"
+         @onclick="() => _grantModal = false"></div>
+    <div class="modal fade show d-block" tabindex="-1" style="z-index:1050">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg border-danger" style="border-width:2px!important">
+                <div class="modal-header border-0 pb-1 bg-danger text-white">
+                    <h6 class="modal-title fw-semibold">⚡ SuperAdmin Yetkisi Ver</h6>
+                    <button class="btn-close btn-close-white" @onclick="() => _grantModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-danger py-2 small mb-3">
+                        Bu işlem geri alınabilir ancak son derece dikkatli yapılmalıdır.
+                        Kullanıcı sistemdeki <strong>tüm kaynaklara</strong> erişim kazanır.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Kullanıcı Seç *</label>
+                        <select class="form-select form-select-sm" @bind="_grantUserId">
+                            <option value="">Kullanıcı seçin…</option>
+                            @foreach (var u in _allUsers.Where(u => !u.Roles.Any(SuperAdminClaims.IsSuperAdminRole)))
+                            {
+                                <option value="@u.Id">@u.Email</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">
+                            Onay için aşağıdakini yazın: <code>SUPERADMIN GRANT</code>
+                        </label>
+                        <input class="form-control form-control-sm" @bind="_grantConfirmPhrase"
+                               placeholder="SUPERADMIN GRANT" />
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _grantModal = false">İptal</button>
+                    <button class="btn btn-sm btn-danger" @onclick="ExecuteGrant"
+                            disabled="@(_grantUserId == Guid.Empty || _grantConfirmPhrase != "SUPERADMIN GRANT" || _actionInProgress)">
+                        @if (_actionInProgress)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Yetki Ver
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ── Revoke Modal ───────────────────────────────────────────────── -->
+@if (_revokeTarget is not null)
+{
+    <div class="modal-backdrop-blur" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1040"
+         @onclick="() => _revokeTarget = null"></div>
+    <div class="modal fade show d-block" tabindex="-1" style="z-index:1050">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-0 pb-1">
+                    <h6 class="modal-title fw-semibold">SuperAdmin Yetkisini Al</h6>
+                    <button class="btn-close" @onclick="() => _revokeTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small">
+                        <strong>@_revokeTarget.Email</strong> kullanıcısının superadmin yetkisi alınacak.
+                    </p>
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium">Sebep *</label>
+                        <input class="form-control form-control-sm" @bind="_revokeReason"
+                               placeholder="Yetkiyi alma sebebi..." />
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _revokeTarget = null">İptal</button>
+                    <button class="btn btn-sm btn-danger" @onclick="ExecuteRevoke"
+                            disabled="@(string.IsNullOrWhiteSpace(_revokeReason) || _actionInProgress)">
+                        Yetkiyi Al
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ── Tenant Status Modal ────────────────────────────────────────── -->
+@if (_tenantStatusTarget is not null)
+{
+    <div class="modal-backdrop-blur" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1040"
+         @onclick="() => _tenantStatusTarget = null"></div>
+    <div class="modal fade show d-block" tabindex="-1" style="z-index:1050">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-0 pb-1">
+                    <h6 class="modal-title fw-semibold">
+                        @(_targetStatus switch {
+                            TenantStatus.Suspended => "Tenant'ı Askıya Al",
+                            TenantStatus.Archived  => "Tenant'ı Arşivle",
+                            TenantStatus.Active    => "Tenant'ı Aktifleştir",
+                            _ => "Tenant Durumunu Güncelle"
+                        })
+                    </h6>
+                    <button class="btn-close" @onclick="() => _tenantStatusTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        <strong>@_tenantStatusTarget.Name</strong> tenantını
+                        @(_tenantStatusTarget.IsActive ? "pasifleştiriyorsunuz" : "aktifleştiriyorsunuz").
+                        @if (_tenantStatusTarget.IsActive)
+                        {
+                            <span>Kullanıcılar giriş yapamayacak.</span>
+                        }
+                    </p>
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium">Sebep</label>
+                        <input class="form-control form-control-sm" @bind="_statusReason" placeholder="İsteğe bağlı…" />
+                    </div>
+                    @if (_tenantStatusTarget.IsActive)
+                    {
+                        <div class="mb-2">
+                            <label class="form-label small fw-medium">Kullanıcıya Gösterilecek Mesaj</label>
+                            <textarea class="form-control form-control-sm" rows="2"
+                                      @bind="_statusMessage"
+                                      placeholder="Bu hesap geçici olarak devre dışı bırakılmıştır."></textarea>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer border-0">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _tenantStatusTarget = null">İptal</button>
+                    <button class="btn btn-sm @(_targetStatus==TenantStatus.Active?"btn-success":"btn-danger")"
+                            @onclick="ExecuteTenantStatus" disabled="@_actionInProgress">
+                        @(_tenantStatusTarget.IsActive ? "Pasifleştir" : "Aktifleştir")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ── Maintenance Modal ──────────────────────────────────────────── -->
+@if (_maintenanceTarget is not null)
+{
+    <div class="modal-backdrop-blur" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1040"
+         @onclick="() => _maintenanceTarget = null"></div>
+    <div class="modal fade show d-block" tabindex="-1" style="z-index:1050">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-0 pb-1">
+                    <h6 class="modal-title fw-semibold">
+                        🔧 @_maintenanceTarget.Name — Bakım Modu
+                    </h6>
+                    <button class="btn-close" @onclick="() => _maintenanceTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox"
+                               id="chkMaintenance" @bind="_maintEnabled" />
+                        <label class="form-check-label fw-medium" for="chkMaintenance">
+                            @(_maintEnabled ? "🔧 Bakım Modu Aktif" : "✅ Normal Çalışma")
+                        </label>
+                    </div>
+                    @if (_maintEnabled)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label small fw-medium">Bakım Başlığı</label>
+                            <input class="form-control form-control-sm" @bind="_maintTitle"
+                                   placeholder="🔧 Bakım Çalışması" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-medium">Kullanıcıya Gösterilecek Mesaj *</label>
+                            <textarea class="form-control form-control-sm" rows="3"
+                                      @bind="_maintMessage"
+                                      placeholder="Sistemimizde bakım çalışması yapılmaktadır. Kısa süre içinde hizmetinize devam edeceğiz."></textarea>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label small fw-medium">İzin Verilen E-posta</label>
+                                <input class="form-control form-control-sm" @bind="_maintAllowedPattern"
+                                       placeholder="@@mycompany.com" />
+                                <div class="text-muted" style="font-size:10px;margin-top:2px">
+                                    Bu pattern'e sahip emailler bakımda da girebilir
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small fw-medium">Tahmini Bitiş</label>
+                                <input type="datetime-local" class="form-control form-control-sm"
+                                       value="@(_maintPlannedEnd?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                                       @onchange="e => _maintPlannedEnd = e.Value is string s && !string.IsNullOrEmpty(s) ? DateTime.Parse(s) : null" />
+                            </div>
+                        </div>
+
+                        <!-- Preview -->
+                        <div class="border rounded-3 p-3 mt-2" style="background:#fff3cd">
+                            <div class="fw-semibold mb-1" style="font-size:14px">
+                                @(string.IsNullOrEmpty(_maintTitle) ? "🔧 Bakım Çalışması" : _maintTitle)
+                            </div>
+                            <div class="small">
+                                @(string.IsNullOrEmpty(_maintMessage)
+                                                        ? "Sistemimizde bakım çalışması yapılmaktadır."
+                                                        : _maintMessage)
+                    </div>
+                    @if (_maintPlannedEnd.HasValue)
+                            {
+                                <div class="small text-muted mt-1">
+                                    Tahmini süre: @_maintPlannedEnd.Value.ToString("dd MMM yyyy HH:mm")
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer border-0">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _maintenanceTarget = null">İptal</button>
+                    <button class="btn btn-sm btn-warning" @onclick="SaveMaintenance" disabled="@_actionInProgress">
+                        @if (_actionInProgress)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Kaydet
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .sa-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--brand-light);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+</style>
+
+@code {
+    bool _loading = true, _actionInProgress, _transferring;
+    string _tab = "admins";
+    string _tenantSearch = "";
+        string _search = "";
+
+    List<SuperAdminListDto> _superAdmins = [];
+    List<TenantDetailDto> _tenantDetails = [];
+    List<UserListDto> _allUsers = [];
+    List<RoleListDto> _allRoles = [];
+    List<AuditLogDto> _auditLogs = [];
+
+    // Grant modal
+    bool _grantModal;
+    Guid _grantUserId;
+    string _grantConfirmPhrase = "";
+
+    // Revoke modal
+    SuperAdminListDto? _revokeTarget;
+    string _revokeReason = "";
+
+    // Tenant status modal
+    TenantDetailDto? _tenantStatusTarget;
+    string _statusReason = "";
+    string _statusMessage = "";
+
+    // Maintenance modal
+    TenantDetailDto? _maintenanceTarget;
+    bool _maintEnabled;
+    string _maintTitle = "";
+    string _maintMessage = "";
+    string? _maintAllowedPattern;
+    DateTime? _maintPlannedEnd;
+
+    // Transfer
+    Guid _transferSourceTenantId;
+    Guid _transferUserId;
+    Guid _transferTargetTenantId;
+    HashSet<Guid> _transferRoleIds = [];
+    bool _transferKeepSource;
+    bool _transferContent;
+    UserTransferPreviewDto? _transferPreview;
+    TransferUserResponse? _transferResult;
+
+    // Tenant detail (selected for user list)
+    TenantDetailDto? _selectedTenant;
+
+    IEnumerable<TenantDetailDto> FilteredTenants => _tenantDetails
+        .Where(t => string.IsNullOrEmpty(_tenantSearch) ||
+                    t.Name.Contains(_tenantSearch, StringComparison.OrdinalIgnoreCase));
+
+    bool CanExecuteTransfer =>
+        _transferSourceTenantId != Guid.Empty &&
+        _transferUserId != Guid.Empty &&
+        _transferTargetTenantId != Guid.Empty &&
+        _transferRoleIds.Any();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await PermSync.SyncIfNeededAsync();
+        if (!Guard.IsSuperAdmin) { _loading = false; return; }
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    async Task LoadAsync()
+    {
+        _loading = true;
+
+        var sa = await SuperAdminApiClient.GetSuperAdminsAsync();
+        var tens = await TenantApiClient.GetTenantsAsync();
+        var usrs = await UserApiClient.GetUsersAsync();
+        var rols = await RoleApiClient.GetRolesAsync();
+        var logs = await SuperAdminApiClient.GetSuperAdminAuditAsync(pageSize: 50);
+
+        if (sa.IsSuccess && sa.Data is not null) _superAdmins = sa.Data;
+        if (usrs.IsSuccess && usrs.Data is not null) _allUsers = usrs.Data;
+        if (rols.IsSuccess && rols.Data is not null) _allRoles = rols.Data;
+        if (logs.IsSuccess && logs.Data is not null) _auditLogs = logs.Data.Items;
+
+        // Load tenant details
+        if (tens.IsSuccess && tens.Data is not null)
+        {
+            _tenantDetails = [];
+            foreach (var t in tens.Data)
+            {
+                var detail = await SuperAdminApiClient.GetTenantDetailAsync(t.Id);
+                if (detail.IsSuccess && detail.Data is not null)
+                    _tenantDetails.Add(detail.Data);
+            }
+        }
+
+        _loading = false;
+    }
+
+    // ── Grant / Revoke ────────────────────────────────────────────────
+
+    async Task ExecuteGrant()
+    {
+        if (_grantUserId == Guid.Empty || _grantConfirmPhrase != "SUPERADMIN GRANT") return;
+        _actionInProgress = true;
+        var r = await SuperAdminApiClient.GrantSuperAdminAsync(
+            new GrantSuperAdminRequest(_grantUserId, _grantConfirmPhrase));
+        _actionInProgress = false;
+        _grantModal = false;
+        _grantConfirmPhrase = "";
+        _grantUserId = Guid.Empty;
+        SetMsg(r.IsSuccess, "SuperAdmin yetkisi verildi ✓", r.Error?.Message);
+        if (r.IsSuccess) await LoadAsync();
+        StateHasChanged();
+    }
+
+    void ConfirmRevoke(SuperAdminListDto admin)
+    {
+        _revokeTarget = admin;
+        _revokeReason = "";
+    }
+
+    async Task ExecuteRevoke()
+    {
+        if (_revokeTarget is null || string.IsNullOrWhiteSpace(_revokeReason)) return;
+        _actionInProgress = true;
+        var r = await SuperAdminApiClient.RevokeSuperAdminAsync(
+            new RevokeSuperAdminRequest(_revokeTarget.UserId, _revokeReason));
+        _actionInProgress = false;
+        _revokeTarget = null;
+        SetMsg(r.IsSuccess, "Yetki alındı ✓", r.Error?.Message);
+        if (r.IsSuccess) await LoadAsync();
+        StateHasChanged();
+    }
+
+    // ── Tenant ───────────────────────────────────────────────────────
+
+    void OpenTenantStatus(TenantDetailDto t, TenantStatus target)
+    {
+        _tenantStatusTarget = t;
+        _targetStatus = target;
+        _statusReason = "";
+        _statusMessage = "";
+    }
+
+    TenantStatus _targetStatus = TenantStatus.Active;
+
+    async Task ExecuteTenantStatus()
+    {
+        if (_tenantStatusTarget is null) return;
+        _actionInProgress = true;
+        try
+        {
+            // Use full status state machine via ProvisionApiClient
+            var req = new SetTenantStatusRequest(_targetStatus, _statusReason, _statusMessage);
+            var r = await ProvisionApiClient.SetTenantStatusAsync(_tenantStatusTarget.Id, req);
+            if (r.IsSuccess)
+            {
+                Toast.Success($"Tenant durumu → {_targetStatus} güncellendi.");
+                await LoadAsync();
+            }
+            else Toast.Error(r.Error?.Message ?? "Durum güncellenemedi.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _actionInProgress = false; _tenantStatusTarget = null; }
+        StateHasChanged();
+    }
+
+    void OpenMaintenance(TenantDetailDto t)
+    {
+        _maintenanceTarget = t;
+        _maintEnabled = t.Maintenance?.IsMaintenanceMode ?? false;
+        _maintTitle = t.Maintenance?.MaintenanceTitle ?? "";
+        _maintMessage = t.Maintenance?.MaintenanceMessage ?? "";
+        _maintAllowedPattern = t.Maintenance?.AllowedEmailPattern;
+        _maintPlannedEnd = t.Maintenance?.PlannedEndAt;
+    }
+
+    async Task SaveMaintenance()
+    {
+        if (_maintenanceTarget is null) return;
+        _actionInProgress = true;
+        var r = await SuperAdminApiClient.SetTenantMaintenanceAsync(_maintenanceTarget.Id,
+            new SetMaintenanceModeRequest(
+                _maintEnabled, _maintTitle, _maintMessage,
+                _maintAllowedPattern, _maintPlannedEnd));
+        _actionInProgress = false;
+        _maintenanceTarget = null;
+        SetMsg(r.IsSuccess, "Bakım modu güncellendi ✓", r.Error?.Message);
+        if (r.IsSuccess) await LoadAsync();
+        StateHasChanged();
+    }
+
+    void OpenTenantUsers(TenantDetailDto t) => _selectedTenant = t;
+
+    // ── Transfer ─────────────────────────────────────────────────────
+
+    async Task OnSourceTenantChanged()
+    {
+        _transferUserId = Guid.Empty;
+        _transferPreview = null;
+        _transferResult = null;
+        StateHasChanged();
+    }
+
+    async Task LoadTransferPreview()
+    {
+        if (_transferUserId == Guid.Empty || _transferSourceTenantId == Guid.Empty) return;
+        var r = await SuperAdminApiClient.GetTransferPreviewAsync(_transferUserId, _transferSourceTenantId);
+        if (r.IsSuccess) _transferPreview = r.Data;
+        StateHasChanged();
+    }
+
+    void ToggleTransferRole(Guid roleId)
+    {
+        if (!_transferRoleIds.Remove(roleId)) _transferRoleIds.Add(roleId);
+    }
+
+    void PreSelectTransfer(TenantUserDto user, TenantDetailDto tenant)
+    {
+        _tab = "transfer";
+        _transferSourceTenantId = tenant.Id;
+        _transferUserId = user.UserId;
+        StateHasChanged();
+        _ = LoadTransferPreview();
+    }
+
+    async Task ExecuteTransfer()
+    {
+        if (!CanExecuteTransfer) return;
+        _transferring = true;
+        _transferResult = null;
+        var r = await SuperAdminApiClient.TransferUserAsync(new TransferUserRequest(
+            _transferUserId, _transferSourceTenantId, _transferTargetTenantId,
+            _transferRoleIds.ToList(), _transferKeepSource, _transferContent));
+        _transferring = false;
+        if (r.IsSuccess) _transferResult = r.Data;
+        else _transferResult = new TransferUserResponse(false, r.Error?.Message ?? "Transfer başarısız.", 0, []);
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    static string AuditColor(string action) => action.ToLower() switch
+    {
+        var a when a.Contains("grant") || a.Contains("create") => "#22c55e",
+        var a when a.Contains("revoke") || a.Contains("delete") => "#ef4444",
+        var a when a.Contains("maintenance") => "#f59e0b",
+        var a when a.Contains("transfer") => "#8b5cf6",
+        _ => "#64748b",
+    };
+
+    void SetMsg(bool ok, string successMsg, string? errMsg)
+    {
+        if (ok) Toast.Success(successMsg); else Toast.Error(errMsg ?? "İşlem başarısız.");
+    }
+}

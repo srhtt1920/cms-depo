@@ -1,0 +1,488 @@
+@page "/permissions/matrix/advanced"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Gelişmiş İzin Matrisi — CMS</PageTitle>
+@if (!AppState.Session.Can("roles.manage"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+
+        <div class="input-group input-group-sm" style="width:200px">
+            <span class="input-group-text bg-transparent"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" /></svg></span>
+            <input @bind="_search" @bind:event="oninput" type="text" class="form-control" placeholder="Ara..." />
+        </div>
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="Gelişmiş İzin Matrisi">
+    <Actions>
+        <a href="/permissions/matrix" class="btn btn-outline-secondary btn-sm">Standart Görünüm</a>
+        @if (_dirty)
+        {
+            <button class="btn btn-success btn-sm" @onclick="SaveAll" disabled="@_saving">
+                @if (_saving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Kaydet (@_dirtyRoles.Count rol)
+            </button>
+        }
+        <button class="btn btn-outline-secondary btn-sm" @onclick="ExportCsv" title="CSV olarak indir">
+            ↓ CSV
+        </button>
+        <button class="btn-ghost btn-icon" @onclick="Load">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+            </svg>
+        </button>
+    </Actions>
+</PageHeader>
+
+
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else
+{
+    <!-- ── Araç çubuğu ────────────────────────────────────────────── -->
+    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <input @bind="_search" @bind:event="oninput" type="text"
+               class="form-control form-control-sm" style="max-width:220px"
+               placeholder="İzin ara..." />
+
+        <select class="form-select form-select-sm" style="width:160px" @bind="_categoryFilter">
+            <option value="">Tüm Kategoriler</option>
+            @foreach (var cat in _categories)
+            {
+                <option value="@cat">@cat</option>
+            }
+        </select>
+
+        <label class="form-check-label small d-flex align-items-center gap-1">
+            <input type="checkbox" class="form-check-input" @bind="_showDiff" />
+            Sadece farklıları göster
+        </label>
+        <label class="form-check-label small d-flex align-items-center gap-1">
+            <input type="checkbox" class="form-check-input" @bind="_groupByCategory" />
+            Kategoriye göre grupla
+        </label>
+
+        <span class="text-muted small ms-auto">
+            @FilteredPermissions.Count() izin · @_roles.Count rol
+        </span>
+    </div>
+
+    <!-- ── Matris Tablosu ─────────────────────────────────────────── -->
+    <div style="overflow-x:auto">
+        <table class="perm-matrix" style="min-width:@(260 + _roles.Count * 110)px">
+            <thead>
+                <tr>
+                    <th class="perm-col-header" style="min-width:220px;position:sticky;left:0;z-index:3">
+                        <div class="th-inner d-flex align-items-center gap-2">
+                            İzin
+                            @if (_groupByCategory)
+                            {
+                                <span class="badge bg-secondary" style="font-size:9px">Kategorili</span>
+                            }
+                        </div>
+                    </th>
+                    @foreach (var role in _roles)
+                    {
+                        var r = role;
+                        <th class="perm-col-role text-center" style="min-width:110px">
+                            <div class="fw-semibold" style="font-size:12px">@r.Name</div>
+                            <div class="text-muted" style="font-size:10px">@r.UserCount kullanıcı</div>
+                            <!-- Tümünü işaretle/kaldır -->
+                            <div class="d-flex gap-1 justify-content-center mt-1">
+                                <button class="btn btn-link p-0" style="font-size:9px"
+                                        @onclick="() => GrantAll(r)" title="Tümüne izin ver">
+                                    ✓ Tümü
+                                </button>
+                                <button class="btn btn-link p-0 text-danger" style="font-size:9px"
+                                        @onclick="() => RevokeAll(r)" title="Tümünü kaldır">
+                                    ✗ Hiç
+                                </button>
+                            </div>
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @if (_groupByCategory)
+                {
+                    @foreach (var cat in FilteredCategories)
+                    {
+                        var category = cat;
+                        var perms = FilteredPermissions.Where(p => GetCategory(p) == category).ToList();
+                        <tr class="perm-category-row">
+                            <td colspan="@(_roles.Count + 1)">
+                                <div class="d-flex align-items-center gap-2">
+                                    <button class="btn-ghost btn-icon" style="width:18px;height:18px"
+                                            @onclick="() => ToggleCat(category)">
+                                        <span>@(_collapsedCats.Contains(category) ? "▶" : "▼")</span>
+                                    </button>
+                                    <span class="fw-semibold" style="font-size:11px;color:var(--text-2)">
+                                        @category
+                                    </span>
+                                    <span class="badge bg-secondary" style="font-size:9px">@perms.Count</span>
+                                    <!-- Kategori toplu toggle -->
+                                    @foreach (var role in _roles)
+                                    {
+                                        var r = role;
+                                        var allGranted = perms.All(p => _grants[r.Id].Contains(p));
+                                        <button class="btn btn-link p-0 ms-2" style="font-size:9px"
+                                                @onclick="() => ToggleCategoryForRole(r, perms, !allGranted)"
+                                                title="@r.Name için @category kategorisini @(allGranted ? "kaldır" : "ver")">
+                                            @r.Name: @(allGranted ? "✓" : "○")
+                                        </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                        @if (!_collapsedCats.Contains(category))
+                        {
+                            @foreach (var perm in perms)
+                            {
+                                @RenderPermRow(perm)
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    @foreach (var perm in FilteredPermissions)
+                    {
+                        @RenderPermRow(perm)
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Sonuç bilgisi -->
+    <div class="d-flex align-items-center gap-3 mt-3 flex-wrap">
+        <small class="text-muted">
+            <strong>@FilteredPermissions.Count()</strong> izin gösteriliyor
+        </small>
+        @if (_dirty)
+        {
+            <div class="d-flex gap-2 flex-wrap">
+                @foreach (var rId in _dirtyRoles)
+                {
+                    var r = _roles.FirstOrDefault(r => r.Id == rId);
+                    if (r is null) continue;
+                    <span class="badge bg-warning text-dark" style="font-size:10px">@r.Name değişti</span>
+                }
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .perm-matrix {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+        .perm-matrix th, .perm-matrix td {
+            border: 1px solid var(--border);
+        }
+
+    .perm-col-header {
+        background: var(--surface-2);
+        padding: 8px 12px;
+    }
+
+    .perm-col-role {
+        background: var(--surface-2);
+        padding: 8px;
+    }
+
+    .perm-row td {
+        padding: 0;
+    }
+
+    .perm-row:hover {
+        background: var(--surface-1);
+    }
+
+    .perm-key-cell {
+        padding: 6px 12px;
+        position: sticky;
+        left: 0;
+        background: var(--surface-0);
+        z-index: 1;
+    }
+
+    .perm-row:hover .perm-key-cell {
+        background: var(--surface-1);
+    }
+
+    .perm-check-cell {
+        text-align: center;
+        padding: 4px;
+        transition: background .1s;
+    }
+
+        .perm-check-cell:hover {
+            background: var(--brand-light);
+        }
+
+    .perm-check-added {
+        background: #dcfce7 !important;
+    }
+
+    .perm-check-removed {
+        background: #fee2e2 !important;
+    }
+
+    .perm-category-row {
+        background: var(--surface-2);
+    }
+
+        .perm-category-row td {
+            padding: 6px 12px;
+        }
+</style>
+
+@code {
+    bool _loading = true, _saving;
+    bool _showDiff, _groupByCategory;
+    string _search = "", _categoryFilter = "";
+
+    List<RoleListDto> _roles = [];
+    List<string> _allPermissions = [];
+    List<string> _categories = [];
+
+    // _grants[roleId] = set of granted permission keys
+    Dictionary<Guid, HashSet<string>> _grants = new();
+    // _original = snapshot before edits for diff detection
+    Dictionary<Guid, HashSet<string>> _original = new();
+    HashSet<Guid> _dirtyRoles = [];
+    HashSet<string> _collapsedCats = [];
+
+    bool _dirty => _dirtyRoles.Any();
+
+    IEnumerable<string> FilteredPermissions => _allPermissions
+        .Where(p => string.IsNullOrEmpty(_search) || p.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(p => string.IsNullOrEmpty(_categoryFilter) || GetCategory(p) == _categoryFilter)
+        .Where(p => !_showDiff || _roles.Any(r =>
+        {
+            var cur = _grants[r.Id].Contains(p);
+            var orig = _original[r.Id].Contains(p);
+            return cur != orig || _roles.Any(r2 => _grants[r2.Id].Contains(p) != _grants[_roles.First().Id].Contains(p));
+        }));
+
+    IEnumerable<string> FilteredCategories =>
+        FilteredPermissions.Select(GetCategory).Distinct().OrderBy(c => c);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await PermSync.SyncIfNeededAsync();
+        await Load();
+        StateHasChanged();
+    }
+
+    async Task Load()
+    {
+        _loading = true;
+        var rolesR = await RoleApiClient.GetRolesAsync();
+        var permsR = await AuthApiClient.GetPermissionsAsync();
+
+        if (rolesR.IsSuccess && rolesR.Data is not null)
+        {
+            _roles = rolesR.Data;
+            _grants = _roles.ToDictionary(r => r.Id, r => r.PermissionKeys.ToHashSet());
+            _original = _roles.ToDictionary(r => r.Id, r => r.PermissionKeys.ToHashSet());
+        }
+
+        if (permsR.IsSuccess && permsR.Data is not null)
+        {
+            // Flatten permission tree to flat list of keys
+            _allPermissions = FlattenTree(permsR.Data.Tree);
+            _categories = _allPermissions.Select(GetCategory).Distinct().OrderBy(c => c).ToList();
+        }
+
+        _dirtyRoles.Clear();
+        _loading = false;
+    }
+
+    static List<string> FlattenTree(List<PermissionNodeDto> nodes)
+    {
+        var result = new List<string>();
+        foreach (var node in nodes)
+        {
+            result.Add(node.Key);
+            result.AddRange(FlattenTree(node.Children));
+        }
+        return result;
+    }
+
+    static string GetCategory(string key)
+    {
+        var parts = key.Split('.');
+        return parts.Length > 0 ? parts[0] : "Other";
+    }
+
+    RenderFragment RenderPermRow(string perm) => builder =>
+    {
+        builder.OpenElement(0, "tr");
+        builder.AddAttribute(1, "class", "perm-row");
+
+        // Permission key cell
+        builder.OpenElement(2, "td");
+        builder.AddAttribute(3, "class", "perm-key-cell");
+
+        builder.OpenElement(4, "div");
+        builder.AddAttribute(5, "class", "fw-medium mono");
+        builder.AddAttribute(6, "style", "font-size:11px");
+        builder.AddContent(7, perm);
+        builder.CloseElement(); // div
+
+        builder.CloseElement(); // td
+
+        // Role cells
+        foreach (var role in _roles)
+        {
+            var r = role;
+            var granted = _grants[r.Id].Contains(perm);
+            var wasGranted = _original[r.Id].Contains(perm);
+            var changed = granted != wasGranted;
+
+            builder.OpenElement(8, "td");
+            builder.AddAttribute(9, "class",
+                "perm-check-cell" +
+                (changed && granted ? " perm-check-added" : "") +
+                (changed && !granted ? " perm-check-removed" : ""));
+
+            builder.OpenElement(10, "input");
+            builder.AddAttribute(11, "type", "checkbox");
+            builder.AddAttribute(12, "class", "form-check-input");
+            builder.AddAttribute(13, "style", "width:14px;height:14px");
+            builder.AddAttribute(14, "checked", granted);
+            builder.AddAttribute(15, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+            {
+                var v = e.Value is bool b ? b : false;
+                if (v) _grants[r.Id].Add(perm); else _grants[r.Id].Remove(perm);
+                if (!_grants[r.Id].SetEquals(_original[r.Id]))
+                    _dirtyRoles.Add(r.Id);
+                else
+                    _dirtyRoles.Remove(r.Id);
+                StateHasChanged();
+            }));
+            builder.CloseElement(); // input
+
+            builder.CloseElement(); // td
+        }
+
+        builder.CloseElement(); // tr
+    };
+
+    void GrantAll(RoleListDto role)
+    {
+        foreach (var p in FilteredPermissions) _grants[role.Id].Add(p);
+        MarkDirty(role.Id);
+    }
+
+    void RevokeAll(RoleListDto role)
+    {
+        foreach (var p in FilteredPermissions) _grants[role.Id].Remove(p);
+        MarkDirty(role.Id);
+    }
+
+    void ToggleCategoryForRole(RoleListDto role, List<string> perms, bool grant)
+    {
+        foreach (var p in perms)
+        {
+            if (grant) _grants[role.Id].Add(p); else _grants[role.Id].Remove(p);
+        }
+        MarkDirty(role.Id);
+    }
+
+    void MarkDirty(Guid roleId)
+    {
+        if (!_grants[roleId].SetEquals(_original[roleId]))
+            _dirtyRoles.Add(roleId);
+        else
+            _dirtyRoles.Remove(roleId);
+    }
+
+    void ToggleCat(string cat)
+    {
+        if (!_collapsedCats.Remove(cat)) _collapsedCats.Add(cat);
+    }
+
+    async Task SaveAll()
+    {
+        _saving = true;
+        int ok = 0, fail = 0;
+
+        foreach (var roleId in _dirtyRoles.ToList())
+        {
+            var role = _roles.First(r => r.Id == roleId);
+            var newKeys = _grants[roleId].ToList();
+            var r = await RoleApiClient.UpdateRoleAsync(roleId, new UpdateRoleApiRequest(role.Name, newKeys));
+            if (r.IsSuccess)
+            {
+                _original[roleId] = _grants[roleId].ToHashSet();
+                _dirtyRoles.Remove(roleId);
+                ok++;
+            }
+            else fail++;
+        }
+
+        _saving = false;
+        if (fail == 0) Toast.Success($"{ok} rol başarıyla güncellendi ✓"
+            .Trim());
+        else Toast.Warning($"{ok} rol güncellendi, {fail} hata oluştu.".Trim());
+        StateHasChanged();
+    }
+
+    async Task ExportCsv()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("Permission");
+        foreach (var r in _roles) sb.Append($",{r.Name}");
+        sb.AppendLine();
+
+        foreach (var p in _allPermissions)
+        {
+            sb.Append(p);
+            foreach (var r in _roles)
+                sb.Append(_grants[r.Id].Contains(p) ? ",✓" : ",");
+            sb.AppendLine();
+        }
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("eval",
+            $"const a=document.createElement('a');a.href='data:text/csv;base64,{base64}';a.download='permissions.csv';a.click()");
+    }
+}

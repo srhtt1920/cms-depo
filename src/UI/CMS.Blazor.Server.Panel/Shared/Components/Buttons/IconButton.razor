@@ -1,0 +1,41 @@
+﻿<button class="@CssClass"
+        @onclick="HandleClick"
+        disabled="@Disabled">
+
+    <SvgIcon Name="@Icon" Size="@IconSize.ToString()" />
+
+    @if (!string.IsNullOrWhiteSpace(Text))
+    {
+        <span>@Text</span>
+    }
+</button>
+
+@code {
+
+    [Parameter]
+    public string Icon { get; set; } = default!;
+
+    [Parameter]
+    public int IconSize { get; set; } = 14;
+
+    [Parameter]
+    public string? Text { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public string CssClass { get; set; } =
+        "btn-ghost btn-icon";
+
+    [Parameter]
+    public EventCallback OnClick { get; set; }
+
+    private async Task HandleClick()
+    {
+        if (Disabled)
+            return;
+
+        await OnClick.InvokeAsync();
+    }
+}

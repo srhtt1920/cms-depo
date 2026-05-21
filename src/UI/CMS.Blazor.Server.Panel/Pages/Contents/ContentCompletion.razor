@@ -1,0 +1,264 @@
+﻿@page "/contents/{ContentId:guid}/completion"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>İçerik Tamamlanma — CMS</PageTitle>
+@if (!AppState.Session.Can("content.read"))
+{
+    <AccessDenied />
+    return;
+}
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+
+        <div class="input-group input-group-sm" style="width:200px">
+            <span class="input-group-text bg-transparent"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" /></svg></span>
+            <input @bind="_search" @bind:event="oninput" type="text" class="form-control" placeholder="Ara..." />
+        </div>
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="İçerik Tamamlanma Skoru" Subtitle="@_slug">
+    <Actions>
+        <a href="/contents/@ContentId/edit" class="btn btn-outline-primary btn-sm">✏️ Düzenle</a>
+        <a href="/contents/@ContentId/preview" class="btn btn-ghost btn-sm">👁 Önizle</a>
+    </Actions>
+</PageHeader>
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger py-2 small">
+        @_error
+        <button class="btn btn-link btn-sm" @onclick="LoadAsync">Tekrar dene</button>
+    </div>
+}
+else if (_dto is not null)
+{
+    <!-- Genel Skor -->
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body p-4 text-center">
+                    <div class="position-relative d-inline-flex align-items-center justify-content-center"
+                         style="width:120px;height:120px">
+                        <!-- Dairesel progress (CSS conic-gradient) -->
+                        <div style="width:120px;height:120px;border-radius:50%;
+                                            background:conic-gradient(@ScoreColor @(_dto.OverallScore)%, #e5e7eb @(_dto.OverallScore)%);
+                                            display:flex;align-items:center;justify-content:center">
+                            <div style="width:90px;height:90px;border-radius:50%;background:white;
+                                                display:flex;flex-direction:column;align-items:center;justify-content:center">
+                                <div style="font-size:26px;font-weight:800;color:@ScoreColor">@_dto.OverallScore%</div>
+                                <div style="font-size:10px;color:#9ca3af;font-weight:500">GENEL</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        @if (_dto.CanPublish)
+                        {
+                            <span class="badge bg-success px-3 py-2">✅ Yayına Hazır</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-warning text-dark px-3 py-2">⚠️ Eksikler Var</span>
+                        }
+                    </div>
+                    @if (_dto.CanPublishLanguages.Any())
+                    {
+                        <div class="mt-2 text-muted small">
+                            Yayına hazır diller:
+                            @foreach (var l in _dto.CanPublishLanguages)
+                            {
+                                <span class="badge bg-success ms-1" style="font-size:9px">@l</span>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Dil Skorları -->
+        <div class="col-12 col-md-8">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-transparent py-2 px-3">
+                    <span class="fw-semibold small">Dil Bazlı Skor</span>
+                </div>
+                <div class="card-body p-3">
+                    @foreach (var lang in _dto.Languages)
+                    {
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-secondary" style="font-size:10px;min-width:30px">@lang.Code.ToUpper()</span>
+                                    <span class="small fw-medium">@lang.Score%</span>
+                                    @if (_dto.CanPublishLanguages.Contains(lang.Code))
+                                    {
+                                        <span style="font-size:11px">✅</span>
+                                    }
+                                </div>
+                                @if (lang.MissingFields.Any())
+                                {
+                                    <span class="small text-danger" style="font-size:11px">
+                                        @lang.MissingFields.Count eksik alan
+                                    </span>
+                                }
+                            </div>
+                            <div class="progress" style="height:6px;border-radius:10px">
+                                <div class="progress-bar" role="progressbar"
+                                     style="width:@lang.Score%;background:@LangScoreColor(lang.Score);border-radius:10px"
+                                     aria-valuenow="@lang.Score" aria-valuemin="0" aria-valuemax="100">
+                                </div>
+                            </div>
+                            @if (lang.MissingFields.Any())
+                            {
+                                <div class="d-flex flex-wrap gap-1 mt-1">
+                                    @foreach (var f in lang.MissingFields)
+                                    {
+                                        <span class="badge bg-danger bg-opacity-10 text-danger"
+                                              style="font-size:9px;font-weight:500">@f</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    <!-- Eksik diller (gerekli ama çevirisi olmayan) -->
+                    @{
+                        var translatedLangs = _dto.Languages.Select(l => l.Code).ToHashSet();
+                        var missingLangs = _dto.RequiredLanguages.Where(l => !translatedLangs.Contains(l)).ToList();
+                    }
+                    @if (missingLangs.Any())
+                    {
+                        <div class="alert alert-warning py-2 small mt-2 mb-0">
+                            <strong>Eksik çeviriler:</strong>
+                            @foreach (var l in missingLangs)
+                            {
+                                <span class="badge bg-warning text-dark ms-1">@l.ToUpper()</span>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bölüm & Blok Analizi -->
+    @if (_dto.Sections.Any())
+    {
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent py-2 px-3">
+                <span class="fw-semibold small">Bölüm & Blok Analizi</span>
+            </div>
+            <div class="card-body p-3">
+                @foreach (var section in _dto.Sections)
+                {
+                    var problemBlocks = section.Blocks.Where(b => b.Score < 100).ToList();
+                    <div class="mb-3 p-3 rounded" style="background:var(--surface-2);border:1px solid var(--border)">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <span style="font-weight:600;font-size:13px">📦 @(section.Name)</span>
+                            @if (!problemBlocks.Any())
+                            {
+                                <span class="badge bg-success" style="font-size:9px">Tam</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning text-dark" style="font-size:9px">@problemBlocks.Count eksik blok</span>
+                            }
+                        </div>
+                        @foreach (var block in problemBlocks)
+                        {
+                            <div class="ms-3 mb-2 p-2 rounded bg-white border"
+                                 style="border-left:3px solid #f59e0b !important">
+                                <div class="d-flex align-items-center justify-content-between mb-1">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="small fw-medium" style="font-size:12px">@block.Type</span>
+                                        <span class="badge bg-warning text-dark" style="font-size:9px">%@block.Score</span>
+                                    </div>
+                                </div>
+                                @if (block.MissingTranslations.Any())
+                                {
+                                    <div class="d-flex flex-wrap gap-1">
+                                        @foreach (var mt in block.MissingTranslations)
+                                        {
+                                            <span class="badge bg-danger bg-opacity-10 text-danger"
+                                                  style="font-size:9px">@mt</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Hızlı Aksiyon -->
+    <div class="mt-3 d-flex flex-wrap gap-2">
+        @if (!_dto.CanPublish)
+        {
+            <div class="alert alert-info py-2 small mb-0 flex-fill">
+                💡 Tüm eksik alanları doldurun, ardından onaya gönderin ya da yayınlayın.
+            </div>
+        }
+        <a href="/contents/@ContentId/edit" class="btn btn-primary btn-sm align-self-start">
+            ✏️ Eksikleri Düzelt
+        </a>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid ContentId { get; set; }
+
+    ContentCompletionDto? _dto;
+    string _slug = "";
+    bool _loading = true;
+    string? _error;
+
+    string ScoreColor => _dto?.OverallScore switch
+    {
+        >= 90 => "#22c55e",
+        >= 60 => "#f59e0b",
+        _ => "#ef4444"
+    };
+
+    static string LangScoreColor(int s) => s switch { >= 90 => "#22c55e", >= 60 => "#f59e0b", _ => "#ef4444" };
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        _loading = true; _error = null;
+        StateHasChanged();
+        try
+        {
+            var r = await ContentApiClient.GetCompletionAsync(ContentId);
+            if (!r.IsSuccess) { _error = r.Error!.Message; return; }
+            _dto = r.Data!;
+            _slug = _dto.Slug;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _loading = false; }
+    }
+}

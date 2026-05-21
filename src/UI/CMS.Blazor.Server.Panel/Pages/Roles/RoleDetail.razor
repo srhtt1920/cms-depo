@@ -1,0 +1,424 @@
+﻿@page "/roles/{RoleId:guid}"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Rol Detayı — CMS</PageTitle>
+
+@if (!AppState.Session.Can("roles.manage"))
+{
+    <AccessDenied />
+    return;
+}
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Rol Detayı (@_role?.Name)</span>
+        <div class="dash-header-sep"></div>
+        <a href="/roles" class="btn btn-outline-secondary btn-sm">‹ Roller</a>
+        <button class="btn btn-primary btn-sm" @onclick="SavePermissions" disabled="@_saving">
+            @if (_saving)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            Kaydet
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+        @if (_loading)
+        {
+            <div class="text-center p-5">
+                <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+            </div>
+        }
+        else if (_role is null)
+        {
+            <div class="alert alert-danger">Rol bulunamadı.</div>
+        }
+        else
+        {
+
+
+
+            <div class="row g-3">
+                <!-- Sol: İzinler -->
+                <div class="col-lg-5">
+                    <div class="card border-0 shadow-sm" style="background:var(--surface)">
+                        <div class="card-header border-0 py-3 px-3 d-flex align-items-center justify-content-between">
+                            <span class="fw-semibold" style="font-size:13px">İzinler</span>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-secondary" style="font-size:11px"
+                                        @onclick="SelectAll">
+                                    Tümünü Seç
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" style="font-size:11px"
+                                        @onclick="DeselectAll">
+                                    Temizle
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body p-2">
+                            <div class="mb-2 px-2">
+                                <input @bind="_permSearch" @bind:event="oninput" type="text"
+                                       class="form-control form-control-sm" placeholder="İzin ara..." />
+                            </div>
+                            @foreach (var grp in FilteredPermGroups())
+                            {
+                                <div class="mb-1">
+                                    <div class="d-flex align-items-center gap-2 px-2 py-1"
+                                         style="background:var(--surface-2);border-radius:4px;cursor:pointer"
+                                         @onclick="() => ToggleExpand(grp.Key)">
+                                        <svg width="10" height="10" fill="currentColor" viewBox="0 0 16 16"
+                                             style="transform:@(_expanded.Contains(grp.Key) ? "rotate(90deg)" : "rotate(0)");transition:.15s">
+                                            <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z" />
+                                        </svg>
+                                        <span class="fw-semibold" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em">@grp.Key</span>
+                                        <span class="badge bg-light text-dark border ms-auto" style="font-size:10px">
+                                            @grp.Value.Count(p => _selectedPerms.Contains(p)) / @grp.Value.Count
+                                        </span>
+                                        <!-- Grup toplu seç -->
+                                        <input type="checkbox" class="form-check-input"
+                                               style="margin:0"
+                                               checked="@grp.Value.All(p => _selectedPerms.Contains(p))"
+                                               @onchange="e => ToggleGroup(grp.Value, (bool)e.Value!)"
+                                               @onclick:stopPropagation />
+                                    </div>
+                                    @if (_expanded.Contains(grp.Key))
+                                    {
+                                        <div class="ps-3 pt-1">
+                                            @foreach (var perm in grp.Value)
+                                            {
+                                                <div class="perm-row">
+                                                    <input type="checkbox" class="form-check-input" id="p_@perm"
+                                                           checked="@_selectedPerms.Contains(perm)"
+                                                           @onchange="e => TogglePerm(perm, (bool)e.Value!)" />
+                                                    <label class="perm-label mono" for="p_@perm" style="font-size:12px">@perm</label>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sağ: Kullanıcı Atama -->
+                <div class="col-lg-7">
+                    <div class="card border-0 shadow-sm mb-3" style="background:var(--surface)">
+                        <div class="card-header border-0 py-3 px-3 d-flex align-items-center justify-content-between">
+                            <div>
+                                <span class="fw-semibold" style="font-size:13px">Bu Roldeki Kullanıcılar</span>
+                                <span class="badge bg-light text-dark border ms-2" style="font-size:10px">@_role.UserCount</span>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="OpenAssign">
+                                <svg width="11" height="11" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                                    <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" />
+                                </svg>
+                                Kullanıcı Ata
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            @if (_usersLoading)
+                            {
+                                <div class="text-center py-4"><div class="spinner-border spinner-border-sm"></div></div>
+                            }
+                            else
+                            {
+                                <div class="cms-table-wrap">
+                                    <table class="cms-table">
+                                        <thead>
+                                            <tr>
+                                                <th><div class="th-inner">Kullanıcı</div></th>
+                                                <th><div class="th-inner">Durum</div></th>
+                                                <th style="width:60px"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var u in _usersWithRole)
+                                            {
+                                                <tr>
+                                                    <td>
+                                                        <div class="d-flex align-items-center gap-2">
+                                                            <div class="dash-avatar avatar-sm" style="background:@AvatarColor(u.Email);color:#fff;flex-shrink:0;font-size:10px">
+                                                                @u.Email[0].ToString().ToUpper()
+                                                            </div>
+                                                            <div>
+                                                                <div style="font-weight:500;font-size:13px">@(u.DisplayName ?? u.Email)</div>
+                                                                @if (u.DisplayName != null)
+                                                                {
+                                                                    <div style="font-size:11px;color:var(--text-3)">@u.Email</div>
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td>
+                                                        @if (u.IsActive)
+                                                        {
+                                                            <span class="status-dot green">Aktif</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="status-dot red">Pasif</span>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        <button class="btn-ghost btn-icon text-danger" title="Rolü Kaldır"
+                                                                @onclick="() => RevokeFromUser(u)">
+                                                            <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                                                                <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z" />
+                                                                <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z" />
+                                                            </svg>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            }
+                                            @if (!_usersWithRole.Any())
+                                            {
+                                                <tr><td colspan="3" class="text-center text-muted py-4 small">Bu role henüz kullanıcı atanmamış</td></tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+        }
+    </div>
+</div>
+<!-- Kullanıcı Atama Modalı -->
+@if (_showAssign)
+{
+    <div class="modal fade show d-block" style="background:rgba(0,0,0,.4)" @onclick="CloseAssign">
+        <div class="modal-dialog modal-md" @onclick:stopPropagation>
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-0 pb-0">
+                    <h6 class="modal-title fw-semibold">Kullanıcıya Rol Ata</h6>
+                    <button class="btn-ghost btn-icon" @onclick="CloseAssign">
+                        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_assignError))
+                    {
+                        <div class="alert alert-danger py-2 small">@_assignError</div>
+                    }
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Kullanıcı Seç *</label>
+                        <select class="form-select form-select-sm" @bind="_assignUserId">
+                            <option value="">— Kullanıcı seçin —</option>
+                            @foreach (var u in _availableUsersForAssign)
+                            {
+                                <option value="@u.Id">@(u.DisplayName ?? u.Email) (@u.Email)</option>
+                            }
+                        </select>
+                    </div>
+                    @if (AppState.Session.CurrentTenantId.HasValue)
+                    {
+                        <div class="p-2 rounded" style="background:var(--surface-2);font-size:12px;color:var(--text-3)">
+                            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                                <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z" />
+                            </svg>
+                            Mevcut tenant: <strong>@AppState.Session.CurrentTenantName</strong>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="CloseAssign">İptal</button>
+                    <button class="btn btn-primary btn-sm" @onclick="AssignRole" disabled="@(_assigning || string.IsNullOrEmpty(_assignUserId))">
+                        @if (_assigning)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Ata
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid RoleId { get; set; }
+
+    RoleListDto? _role;
+    List<UserListDto> _allUsers = [];
+    List<UserListDto> _usersWithRole = [];
+    List<UserListDto> _availableUsersForAssign = [];
+
+    HashSet<string> _selectedPerms = [];
+    List<string> _allPermKeys = [];
+    string _permSearch = "";
+    HashSet<string> _expanded = [];
+
+    bool _loading = true, _usersLoading = true, _saving, _assigning;
+    string? _errorMsg;
+    bool _showAssign;
+    string? _assignError;
+    string _assignUserId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        _loading = true;
+        await Task.WhenAll(LoadRoleAsync(), LoadUsersAsync(), LoadPermissionsAsync());
+        _loading = false;
+
+    }
+
+    async Task LoadRoleAsync()
+    {
+        var r = await RoleApiClient.GetRolesAsync();
+        if (r.IsSuccess)
+        {
+            _role = r.Data?.FirstOrDefault(x => x.Id == RoleId);
+            if (_role != null)
+                _selectedPerms = new HashSet<string>(_role.PermissionKeys);
+        }
+    }
+
+    async Task LoadPermissionsAsync()
+    {
+        var r = await AuthApiClient.GetPermissionsAsync();
+        if (r.IsSuccess && r.Data is not null)
+        {
+            _allPermKeys = FlatAll(r.Data.Tree).ToList();
+            // Auto-expand all groups
+            foreach (var k in _allPermKeys.Select(p => p.Split('.')[0]).Distinct())
+                _expanded.Add(k);
+        }
+    }
+
+    async Task LoadUsersAsync()
+    {
+        _usersLoading = true;
+        var r = await UserApiClient.GetUsersAsync();
+        if (r.IsSuccess && r.Data is not null)
+        {
+            _allUsers = r.Data;
+            RefreshUserLists();
+        }
+        _usersLoading = false;
+    }
+
+    void RefreshUserLists()
+    {
+        if (_role is null) return;
+        _usersWithRole = _allUsers.Where(u => u.Roles.Contains(_role.Name)).ToList();
+        _availableUsersForAssign = _allUsers.Where(u => !u.Roles.Contains(_role.Name)).ToList();
+    }
+
+    async Task SavePermissions()
+    {
+        if (_role is null) return;
+        _saving = true;
+        var r = await RoleApiClient.UpdateRoleAsync(RoleId, new UpdateRoleApiRequest(_role.Name, [.. _selectedPerms]));
+        if (r.IsSuccess)
+        {
+            Toast.Success("İzinler başarıyla kaydedildi.");
+            _role = r.Data ?? _role;
+        }
+        else Toast.Error(r.Error?.Message ?? "Kayıt başarısız.");
+        _saving = false;
+    }
+
+    void OpenAssign()
+    {
+        _assignUserId = "";
+        _assignError = null;
+        _showAssign = true;
+    }
+
+    void CloseAssign() => _showAssign = false;
+
+    async Task AssignRole()
+    {
+        if (!Guid.TryParse(_assignUserId, out var uid)) return;
+        if (!AppState.Session.CurrentTenantId.HasValue) { _assignError = "Tenant seçilmemiş."; return; }
+
+        _assigning = true; _assignError = null;
+        var r = await RoleApiClient.AssignRoleAsync(RoleId,
+            new AssignRoleApiRequest(uid, AppState.Session.CurrentTenantId.Value));
+        if (r.IsSuccess)
+        {
+            CloseAssign();
+            await LoadUsersAsync();
+        }
+        else _assignError = r.Error?.Message ?? "Atama başarısız."; Toast.Error(_assignError);
+        _assigning = false;
+    }
+
+    async Task RevokeFromUser(UserListDto user)
+    {
+        if (!AppState.Session.CurrentTenantId.HasValue) return;
+        var r = await RoleApiClient.RevokeRoleAsync(RoleId,
+            new RevokeRoleApiRequest(user.Id, AppState.Session.CurrentTenantId.Value));
+        if (r.IsSuccess) await LoadUsersAsync();
+        else Toast.Error(r.Error?.Message ?? "Rol kaldırma başarısız.");
+    }
+
+    void SelectAll() => _selectedPerms = new HashSet<string>(_allPermKeys);
+    void DeselectAll() => _selectedPerms.Clear();
+
+    void TogglePerm(string p, bool on)
+    {
+        if (on) _selectedPerms.Add(p); else _selectedPerms.Remove(p);
+    }
+
+    void ToggleGroup(List<string> perms, bool on)
+    {
+        foreach (var p in perms)
+            if (on) _selectedPerms.Add(p); else _selectedPerms.Remove(p);
+    }
+
+    void ToggleExpand(string g)
+    {
+        if (_expanded.Contains(g)) _expanded.Remove(g); else _expanded.Add(g);
+    }
+
+    Dictionary<string, List<string>> FilteredPermGroups()
+    {
+        var result = new Dictionary<string, List<string>>();
+        foreach (var key in _allPermKeys)
+        {
+            if (!string.IsNullOrEmpty(_permSearch) &&
+                !key.Contains(_permSearch, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var g = key.Split('.')[0];
+            if (!result.ContainsKey(g)) result[g] = [];
+            result[g].Add(key);
+        }
+        return result;
+    }
+
+    IEnumerable<string> FlatAll(List<PermissionNodeDto> nodes)
+    {
+        foreach (var n in nodes)
+        {
+            yield return n.Key;
+            foreach (var c in FlatAll(n.Children)) yield return c;
+        }
+    }
+
+    static string AvatarColor(string e)
+    {
+        string[] p = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#0ea5e9"];
+        return p[Math.Abs(e.GetHashCode()) % p.Length];
+    }
+}

@@ -1,0 +1,197 @@
+﻿@* Kullanım: <DuplicateContentModal ContentId="@id" ContentSlug="@slug" OnDuplicated="HandleDuplicated" /> *@
+@if (!_open) { return; }
+
+<!-- Backdrop -->
+<div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1040"
+     @onclick="Close"></div>
+
+<!-- Modal -->
+<div class="modal fade show d-block" tabindex="-1" style="z-index:1050">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+
+            <!-- Başlık -->
+            <div class="modal-header border-0 pb-2">
+                <div>
+                    <h6 class="modal-title fw-semibold mb-0">📋 İçeriği Çoğalt</h6>
+                    <div class="text-muted" style="font-size:12px">/@SourceSlug</div>
+                </div>
+                <button class="btn-close" @onclick="Close" disabled="@_busy"></button>
+            </div>
+
+            <div class="modal-body pt-2">
+
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <div class="alert alert-danger py-2 small mb-3">@_error</div>
+                }
+
+                <!-- Yeni Slug -->
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Yeni Slug <span class="text-danger">*</span></label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text" style="font-size:12px">/</span>
+                        <input @bind="_newSlug" @bind:event="oninput" @bind:after="ValidateSlug"
+                               type="text" class="form-control @(SlugInvalid ? "is-invalid" : SlugOk ? "is-valid" : "")"
+                               placeholder="yeni-icerik-slug" />
+                    </div>
+                    @if (SlugInvalid)
+                    {
+                        <div class="text-danger" style="font-size:11px;margin-top:4px">@_slugError</div>
+                    }
+                    else if (SlugOk)
+                    {
+                        <div class="text-success" style="font-size:11px;margin-top:4px">✓ Slug kullanılabilir</div>
+                    }
+                    <div class="form-text" style="font-size:11px">
+                        Yalnızca küçük harf, rakam ve tire (-) kullanın. Mevcut slug ile aynı olamaz.
+                    </div>
+                </div>
+
+                <!-- Dil klonlama seçenekleri -->
+                @if (_availableLangs.Any())
+                {
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Klonlanacak Diller</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            @foreach (var lang in _availableLangs)
+                            {
+                                var l = lang;
+                                var sel = _selectedLangs.Contains(l);
+                                <label class="d-flex align-items-center gap-1 px-2 py-1 rounded"
+                                       style="border:1px solid var(--border);cursor:pointer;
+                                                      background:@(sel ? "var(--accent-soft)" : "transparent");
+                                                      font-size:12px">
+                                    <input type="checkbox" class="form-check-input"
+                                           checked="@sel"
+                                           @onchange="e => ToggleLang(l, (bool)e.Value!)" />
+                                    @l.ToUpper()
+                                </label>
+                            }
+                        </div>
+                        <div class="form-text" style="font-size:11px">
+                            Seçilen dillerin çevirileri yeni içeriğe kopyalanır.
+                        </div>
+                    </div>
+                }
+
+                <!-- Taslak olarak oluştur uyarısı -->
+                <div class="p-3 rounded d-flex align-items-start gap-2"
+                     style="background:var(--surface-2);border:1px solid var(--border)">
+                    <span style="font-size:1rem;flex-shrink:0">ℹ️</span>
+                    <div class="small text-muted">
+                        Kopyalanan içerik <strong>Taslak</strong> durumunda oluşturulur.
+                        Bölümler, bloklar ve çeviriler aktarılır. Yayın durumu, kilit ve zamanlama taşınmaz.
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer border-0 pt-2 gap-2">
+                <button class="btn btn-ghost btn-sm" @onclick="Close" disabled="@_busy">İptal</button>
+                <button class="btn btn-primary btn-sm" @onclick="DuplicateAsync"
+                        disabled="@(_busy || SlugInvalid || string.IsNullOrWhiteSpace(_newSlug))">
+                    @if (_busy)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                        <span>Oluşturuluyor...</span>
+                    }
+                    else
+                    {
+                        <span>📋 Çoğalt</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid ContentId { get; set; }
+    [Parameter, EditorRequired] public string SourceSlug { get; set; } = "";
+    [Parameter] public List<string> AvailableLangs { get; set; } = [];
+    [Parameter] public EventCallback<Guid> OnDuplicated { get; set; }
+
+    // State
+    bool _open;
+    bool _busy;
+    string? _newSlug;
+    string? _slugError;
+    string? _error;
+    HashSet<string> _selectedLangs = [];
+    List<string> _availableLangs = [];
+
+    bool SlugInvalid => !string.IsNullOrEmpty(_newSlug) && !string.IsNullOrEmpty(_slugError);
+    bool SlugOk => !string.IsNullOrEmpty(_newSlug) && string.IsNullOrEmpty(_slugError);
+
+    protected override void OnParametersSet()
+    {
+        _availableLangs = AvailableLangs.Any() ? AvailableLangs : ["tr"];
+        _selectedLangs = _availableLangs.ToHashSet();
+    }
+
+    /// Dışarıdan modal'ı aç
+    public void Open()
+    {
+        _newSlug = $"{SourceSlug}-kopya";
+        _slugError = null;
+        _error = null;
+        _busy = false;
+        _open = true;
+        ValidateSlug();
+        StateHasChanged();
+    }
+
+    void Close()
+    {
+        if (_busy) return;
+        _open = false;
+        _newSlug = null;
+        _slugError = null;
+        _error = null;
+    }
+
+    void ToggleLang(string lang, bool on)
+    {
+        if (on) _selectedLangs.Add(lang);
+        else _selectedLangs.Remove(lang);
+    }
+
+    void ValidateSlug()
+    {
+        if (string.IsNullOrWhiteSpace(_newSlug)) { _slugError = null; return; }
+        var slug = _newSlug!.Trim();
+
+        if (slug == SourceSlug)
+        { _slugError = "Yeni slug, kaynak slug ile aynı olamaz."; return; }
+
+        if (!System.Text.RegularExpressions.Regex.IsMatch(slug, @"^[a-z0-9][a-z0-9\-]*[a-z0-9]$"))
+        { _slugError = "Geçersiz slug formatı. Yalnızca küçük harf, rakam ve tire kullanın."; return; }
+
+        if (slug.Contains("--"))
+        { _slugError = "Art arda tire kullanılamaz."; return; }
+
+        _slugError = null;
+    }
+
+    async Task DuplicateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newSlug) || SlugInvalid) return;
+        _busy = true; _error = null;
+        try
+        {
+            var r = await ContentApiClient.DuplicateContentAsync(ContentId, _newSlug!.Trim());
+            if (r.IsSuccess)
+            {
+                _open = false;
+                await OnDuplicated.InvokeAsync(r.Data!.Id);
+            }
+            else
+            {
+                _error = r.Error!.Message;
+                Toast.Error(r.Error!.Message);
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; Toast.Error(ex.Message); }
+        finally { _busy = false; }
+    }
+}

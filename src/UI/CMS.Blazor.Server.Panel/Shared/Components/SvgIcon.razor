@@ -1,0 +1,28 @@
+﻿@if (!string.IsNullOrEmpty(_svg))
+{
+    <span class="svg-icon" style="@Style" title="@Title">
+        @((MarkupString)_svg)
+    </span>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Size { get; set; }  // "12", "14", "16" (px)
+    [Parameter] public string? Color { get; set; }  // CSS color
+
+    string _svg = "";
+
+    protected override void OnParametersSet()
+    {
+        var raw = Icons.Get(Name);
+        if (string.IsNullOrEmpty(raw)) { _svg = ""; return; }
+
+        // Boyut ve renk attribute'larını inject et
+        var w = Size ?? "16";
+        var c = Color ?? "currentColor";
+        _svg = raw
+            .Replace("<svg ", $"<svg width=\"{w}\" height=\"{w}\" style=\"color: {c}\" ");
+    }
+}

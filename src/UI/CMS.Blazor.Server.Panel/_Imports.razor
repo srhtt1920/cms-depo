@@ -1,0 +1,65 @@
+﻿@using System.Net.Http
+@using System.ComponentModel.DataAnnotations
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@using Microsoft.JSInterop
+
+@using CMS.Blazor.Server.Panel
+@using CMS.Blazor.Server.Panel.Infrastructure.Auth
+@using CMS.Blazor.Server.Panel.Infrastructure.Preferences
+@using CMS.Blazor.Server.Panel.Infrastructure.Session
+@using CMS.Blazor.Server.Panel.Infrastructure.ApiClients.Auth
+@using CMS.Blazor.Server.Panel.Infrastructure.ApiClients.Identity
+@using CMS.Blazor.Server.Panel.Infrastructure.ApiClients.PageContent
+@using CMS.Blazor.Server.Panel.Infrastructure.ApiClients.Tenant
+@using CMS.Blazor.Server.Panel.Services
+@using CMS.Blazor.Server.Panel.Services.State
+@using CMS.Blazor.Server.Panel.Shared
+@using CMS.Blazor.Server.Panel.Shared.Components
+@using CMS.Blazor.Server.Panel.Shared.Components.Buttons
+@using CMS.Blazor.Server.Panel.Shared.Layouts
+@using CMS.Blazor.Server.Panel.Shared.Nav
+@using CMS.Blazor.Server.Panel.Models
+@using CMS.Blazor.Server.Panel.Models.App
+@using CMS.Blazor.Server.Panel.Models.Approval
+@using CMS.Blazor.Server.Panel.Models.Audit
+@using CMS.Blazor.Server.Panel.Models.Auth
+@using CMS.Blazor.Server.Panel.Models.Content
+@using CMS.Blazor.Server.Panel.Models.Dashboard
+@using CMS.Blazor.Server.Panel.Models.Page
+@using CMS.Blazor.Server.Panel.Models.Role
+@using CMS.Blazor.Server.Panel.Models.Shared
+@using CMS.Blazor.Server.Panel.Models.SuperAdmin
+@using CMS.Blazor.Server.Panel.Models.Tenant
+@using CMS.Blazor.Server.Panel.Models.User
+
+@inject IJSRuntime JS
+@inject ApplicationState AppState
+@inject NavigationManager Nav
+@inject AuthService Auth
+@inject ToastService Toast
+@inject CmsAuthStateProvider AuthProvider
+@inject SvgIconService Icons
+@inject PermissionSyncService PermSync
+@inject NavMenuState NavMenu
+@inject TenantLanguageState LangState
+@inject SuperAdminGuard Guard
+
+@inject ApprovalApiClient ApprovalApiClient;
+@inject AuthApiClient AuthApiClient;
+@inject AuditApiClient AuditApiClient;
+@inject ContentApiClient ContentApiClient;
+@inject PageApiClient PageApiClient;
+@inject TenantApiClient TenantApiClient;
+@inject UserApiClient UserApiClient;
+@inject RoleApiClient RoleApiClient;
+@inject SuperAdminApiClient SuperAdminApiClient;
+@inject DashboardApiClient DashboardApiClient;
+@inject SeoApiClient SeoApiClient;
+@inject InviteApiClient InviteApiClient
+@inject TenantProvisioningApiClient ProvisionApiClient

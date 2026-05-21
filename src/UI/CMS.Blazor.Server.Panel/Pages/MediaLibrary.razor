@@ -1,0 +1,418 @@
+﻿@page "/media"
+@attribute [Authorize]
+@layout DashBoardLayout
+@implements IDisposable
+
+<PageTitle>Medya Kütüphanesi — CMS</PageTitle>
+@if (!AppState.Session.Can("media.read"))
+{
+    <AccessDenied />
+    return;
+}
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="Medya Kütüphanesi" Subtitle="Resim, video ve doküman yönetimi">
+    <Actions>
+        @if (AppState.Session.Can("media.upload"))
+        {
+            <label class="btn btn-primary btn-sm d-flex align-items-center gap-1" style="cursor:pointer">
+                <svg width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z" />
+                    <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z" />
+                </svg>
+                Yükle
+                <InputFile @ref="_inputFile" OnChange="OnFilesSelected" multiple accept="image/*,video/*,.pdf,.doc,.docx"
+                           style="display:none" />
+            </label>
+        }
+        <button class="btn-ghost btn-icon" @onclick="LoadAsync" title="Yenile">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+            </svg>
+        </button>
+    </Actions>
+</PageHeader>
+
+<!-- Upload progress -->
+@if (_uploads.Any())
+{
+    <div class="mb-3">
+        @foreach (var u in _uploads)
+        {
+            <div class="d-flex align-items-center gap-2 mb-1 p-2 rounded"
+                 style="background:var(--surface-2);border:1px solid var(--border)">
+                <span class="small fw-medium" style="font-size:12px;min-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@u.Name</span>
+                <div class="progress flex-fill" style="height:6px;border-radius:10px">
+                    <div class="progress-bar @(u.Done ? "bg-success" : "bg-primary")" style="width:@u.Progress%;border-radius:10px"></div>
+                </div>
+                <span class="small text-muted" style="font-size:11px;min-width:40px">@u.Progress%</span>
+                @if (u.Error is not null)
+                {
+                    <span class="small text-danger" style="font-size:11px">@u.Error</span>
+                }
+            </div>
+        }
+    </div>
+}
+
+
+
+<div class="row g-3">
+    <!-- Sol: Klasör / Tag sidebar -->
+    <div class="col-12 col-lg-2">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body p-2">
+                <div class="small fw-semibold text-muted px-1 mb-1">KLASÖRLER</div>
+                @foreach (var folder in _folders)
+                {
+                    <button class="btn btn-ghost btn-sm w-100 text-start d-flex align-items-center gap-2 @(_activeFolder == folder ? "fw-semibold" : "")"
+                            style="font-size:12px"
+                            @onclick="() => SetFolder(folder)">
+                        📁 @folder
+                    </button>
+                }
+                <button class="btn btn-ghost btn-sm w-100 text-start d-flex align-items-center gap-2"
+                        style="font-size:12px;color:var(--accent)"
+                        @onclick="() => _newFolderModal = true">
+                    + Klasör Ekle
+                </button>
+            </div>
+        </div>
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-2">
+                <div class="small fw-semibold text-muted px-1 mb-1">ETİKETLER</div>
+                @foreach (var tag in _tags)
+                {
+                    <button class="btn btn-ghost btn-sm w-100 text-start d-flex align-items-center gap-2 @(_activeTag == tag ? "fw-semibold" : "")"
+                            style="font-size:12px"
+                            @onclick="() => SetTag(tag)">
+                        🏷️ @tag
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Sağ: Medya Grid -->
+    <div class="col-12 col-lg-10">
+        <!-- Arama & görünüm -->
+        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+            <div style="position:relative;max-width:260px;flex:1">
+                <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text-3)"
+                     width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" />
+                </svg>
+                <input @bind="_search" @bind:event="oninput" type="text" class="form-control form-control-sm"
+                       style="padding-left:30px" placeholder="Dosya ara..." />
+            </div>
+            <div class="btn-group btn-group-sm ms-auto">
+                @foreach (var t in new[] { "all", "image", "video", "document" })
+                {
+                    <button class="btn @(_typeFilter == t ? "btn-primary" : "btn-outline-secondary")"
+                            style="font-size:11px" @onclick="() => _typeFilter = t">
+                        @TypeLabel(t)
+                    </button>
+                }
+            </div>
+            <div class="btn-group btn-group-sm">
+                <button class="btn @(_gridView ? "btn-primary" : "btn-outline-secondary")" @onclick='() => _gridView = true' title="Grid">⊞</button>
+                <button class="btn @(!_gridView ? "btn-primary" : "btn-outline-secondary")" @onclick='() => _gridView = false' title="Liste">≡</button>
+            </div>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="text-center p-5">
+                <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+            </div>
+        }
+        else if (!FilteredAssets.Any())
+        {
+            <!-- Drop zone -->
+            <div class="border-2 border-dashed rounded text-center py-5"
+                 style="border-color:var(--border);background:var(--surface-2);cursor:pointer"
+                 @onclick="async () => { if (_inputFile?.Element is { } el) await el.FocusAsync(); }">
+                <div style="font-size:40px;margin-bottom:12px">🖼️</div>
+                <div class="fw-semibold text-muted">Medya bulunamadı</div>
+                <div class="small text-muted mt-1">Dosya yüklemek için yukarıdaki Yükle butonunu kullanın.</div>
+            </div>
+        }
+        else if (_gridView)
+        {
+            <div class="row g-2">
+                @foreach (var asset in FilteredAssets)
+                {
+                    var a = asset;
+                    <div class="col-6 col-md-4 col-xl-3">
+                        <div class="card border-0 shadow-sm h-100 media-card @(_selected == a.Id ? "media-card--selected" : "")"
+                             style="cursor:pointer;transition:box-shadow .15s"
+                             @onclick="() => SelectAsset(a)">
+                            <div class="media-thumb" style="height:120px;background:#f3f4f6;overflow:hidden;border-radius:8px 8px 0 0;position:relative">
+                                @if (a.Type == "image")
+                                {
+                                    <img src="@a.Url" alt="@a.AltText" style="width:100%;height:100%;object-fit:cover" loading="lazy" />
+                                }
+                                else
+                                {
+                                    <div class="d-flex align-items-center justify-content-center h-100" style="font-size:36px">
+                                        @FileIcon(a.Type)
+                                    </div>
+                                }
+                                @if (_selected == a.Id)
+                                {
+                                    <div style="position:absolute;top:6px;right:6px;background:#4f46e5;color:white;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px">✓</div>
+                                }
+                            </div>
+                            <div class="card-body p-2">
+                                <div style="font-size:11px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="@a.FileName">@a.FileName</div>
+                                <div class="d-flex align-items-center justify-content-between mt-1">
+                                    <span class="text-muted" style="font-size:10px">@FormatSize(a.SizeBytes)</span>
+                                    <span class="badge bg-light text-dark border" style="font-size:9px">@a.Type</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <!-- Liste görünümü -->
+            <table class="cms-table">
+                <thead>
+                    <tr>
+                        <th style="width:40px"></th>
+                        <th><div class="th-inner">Dosya</div></th>
+                        <th><div class="th-inner">Tür</div></th>
+                        <th><div class="th-inner">Boyut</div></th>
+                        <th><div class="th-inner">Yüklenme</div></th>
+                        <th style="width:80px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var asset in FilteredAssets)
+                    {
+                        var a = asset;
+                        <tr class="@(_selected == a.Id ? "table-active" : "")" style="cursor:pointer" @onclick="() => SelectAsset(a)">
+                            <td>
+                                @if (a.Type == "image")
+                                {
+                                    <img src="@a.Url" alt="@a.AltText" style="width:36px;height:36px;object-fit:cover;border-radius:4px" loading="lazy" />
+                                }
+                                else
+                                {
+                                    <div class="d-flex align-items-center justify-content-center" style="width:36px;height:36px;background:#f3f4f6;border-radius:4px;font-size:18px">@FileIcon(a.Type)</div>
+                                }
+                            </td>
+                            <td>
+                                <div style="font-size:13px;font-weight:500">@a.FileName</div>
+                                @if (!string.IsNullOrEmpty(a.AltText))
+                                {
+                                    <div style="font-size:10px;color:#9ca3af">Alt: @a.AltText</div>
+                                }
+                            </td>
+                            <td><span class="badge bg-light text-dark border" style="font-size:10px">@a.Type</span></td>
+                            <td class="small text-muted">@FormatSize(a.SizeBytes)</td>
+                            <td class="small text-muted">@a.UploadedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                            <td>
+                                <button class="btn btn-ghost btn-sm" title="Kopyala" @onclick:stopPropagation
+                                        @onclick="() => CopyUrl(a.Url)">
+                                    📋
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+<!-- Asset Detail Panel -->
+@if (_activeAsset is not null)
+{
+    <div style="position:fixed;right:0;top:0;bottom:0;width:320px;z-index:1030;background:white;box-shadow:-4px 0 24px rgba(0,0,0,.12);overflow-y:auto;padding:20px">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <span class="fw-semibold">Dosya Detayı</span>
+            <button class="btn btn-ghost btn-sm" @onclick="() => _activeAsset = null">✕</button>
+        </div>
+
+        @if (_activeAsset.Type == "image")
+        {
+            <img src="@_activeAsset.Url" alt="@_activeAsset.AltText"
+                 style="width:100%;max-height:200px;object-fit:contain;background:#f3f4f6;border-radius:8px;margin-bottom:16px" />
+        }
+
+        <div class="mb-3">
+            <label class="form-label small fw-medium">Alt Text</label>
+            <input @bind="_editAlt" type="text" class="form-control form-control-sm"
+                   placeholder="Erişilebilirlik için alt metin..." />
+        </div>
+        <div class="mb-3">
+            <label class="form-label small fw-medium">Klasör</label>
+            <select class="form-select form-select-sm" @bind="_editFolder">
+                <option value="">— Seçin —</option>
+                @foreach (var f in _folders)
+                {
+                    <option value="@f">@f</option>
+                }
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label small fw-medium">URL</label>
+            <div class="input-group input-group-sm">
+                <input type="text" class="form-control" value="@_activeAsset.Url" readonly />
+                <button class="btn btn-outline-secondary" @onclick="() => CopyUrl(_activeAsset.Url)">📋</button>
+            </div>
+        </div>
+        <div class="mb-2 small text-muted">Boyut: @FormatSize(_activeAsset.SizeBytes)</div>
+        <div class="mb-3 small text-muted">Yüklendi: @_activeAsset.UploadedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</div>
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary btn-sm flex-fill" @onclick="SaveAssetMeta" disabled="@_saving">
+                @if (_saving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Kaydet
+            </button>
+            @if (AppState.Session.Can("media.delete"))
+            {
+                <button class="btn btn-outline-danger btn-sm" @onclick="DeleteAssetAsync" disabled="@_saving">🗑️</button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    InputFile? _inputFile;
+    List<MediaAssetDto> _assets = [];
+    List<UploadProgress> _uploads = [];
+    List<string> _folders = ["Resimler", "Videolar", "Dokümanlar", "Banner"];
+    List<string> _tags = ["hero", "thumbnail", "logo", "icon"];
+    string _activeFolder = "";
+    string _activeTag = "";
+    string _search = "";
+    string _typeFilter = "all";
+    bool _gridView = true;
+    bool _loading = true;
+    bool _saving;
+    bool _newFolderModal;
+    Guid? _selected;
+    MediaAssetDto? _activeAsset;
+    string _editAlt = "";
+    string _editFolder = "";
+
+    IEnumerable<MediaAssetDto> FilteredAssets => _assets
+        .Where(a => _typeFilter == "all" || a.Type == _typeFilter)
+        .Where(a => string.IsNullOrEmpty(_search) || a.FileName.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(a => string.IsNullOrEmpty(_activeFolder) || a.Folder == _activeFolder);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        _loading = true;
+        await Task.Delay(200); // Gerçek: await MediaApiClient.GetAssetsAsync()
+        _assets = GenerateDemoAssets();
+        _loading = false;
+    }
+
+    List<MediaAssetDto> GenerateDemoAssets() =>
+    [
+        new(Guid.NewGuid(), "hero-banner.jpg", "image", 245000, "/media/hero-banner.jpg", "Ana sayfa banner görseli", "Resimler", DateTime.UtcNow.AddDays(-5)),
+        new(Guid.NewGuid(), "logo.png", "image", 12000, "/media/logo.png", "Şirket logosu", "Resimler", DateTime.UtcNow.AddDays(-10)),
+        new(Guid.NewGuid(), "intro-video.mp4", "video", 15000000, "/media/intro-video.mp4", "", "Videolar", DateTime.UtcNow.AddDays(-2)),
+        new(Guid.NewGuid(), "kullanim-kilavuzu.pdf", "document", 880000, "/media/kilavuz.pdf", "", "Dokümanlar", DateTime.UtcNow.AddDays(-8)),
+        new(Guid.NewGuid(), "urun-gorseli.jpg", "image", 320000, "/media/urun.jpg", "Ürün görseli", "Resimler", DateTime.UtcNow.AddDays(-1)),
+    ];
+
+    void SelectAsset(MediaAssetDto a)
+    {
+        _selected = a.Id;
+        _activeAsset = a;
+        _editAlt = a.AltText ?? "";
+        _editFolder = a.Folder ?? "";
+    }
+
+    void SetFolder(string f) => _activeFolder = _activeFolder == f ? "" : f;
+    void SetTag(string t) => _activeTag = _activeTag == t ? "" : t;
+
+    async Task OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(10))
+        {
+            var prog = new UploadProgress(file.Name);
+            _uploads.Add(prog);
+            StateHasChanged();
+            // Simulated upload — gerçek impl. MediaApiClient.UploadAsync(file)
+            for (int p = 0; p <= 100; p += 20)
+            {
+                prog.Progress = p;
+                StateHasChanged();
+                await Task.Delay(100);
+            }
+            prog.Done = true;
+            StateHasChanged();
+        }
+        await Task.Delay(800);
+        _uploads.Clear();
+        await LoadAsync();
+        Toast.Success("Dosyalar başarıyla yüklendi.");
+    }
+
+    async Task SaveAssetMeta()
+    {
+        if (_activeAsset is null) return;
+        _saving = true;
+        await Task.Delay(300); // Gerçek: await MediaApiClient.UpdateAsync(...)
+        _saving = false;
+        Toast.Success("Meta bilgisi kaydedildi.");
+    }
+
+    async Task DeleteAssetAsync()
+    {
+        if (_activeAsset is null) return;
+        _assets.RemoveAll(a => a.Id == _activeAsset.Id);
+        _activeAsset = null;
+        _selected = null;
+        Toast.Warning("Dosya silindi.");
+        await Task.CompletedTask;
+    }
+
+    async Task CopyUrl(string url)
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+        Toast.Info("URL panoya kopyalandı.");
+    }
+
+    static string TypeLabel(string t) => t switch { "image" => "🖼 Resim", "video" => "🎬 Video", "document" => "📄 Doküman", _ => "Tümü" };
+    static string FileIcon(string t) => t switch { "video" => "🎬", "document" => "📄", _ => "📦" };
+    static string FormatSize(long b) => b switch { > 1_000_000 => $"{b / 1_000_000.0:F1} MB", > 1_000 => $"{b / 1_000} KB", _ => $"{b} B" };
+
+    public void Dispose() { }
+
+    record MediaAssetDto(Guid Id, string FileName, string Type, long SizeBytes, string Url, string? AltText, string? Folder, DateTime UploadedAt);
+    class UploadProgress(string name) { public string Name { get; } = name; public int Progress { get; set; } public bool Done { get; set; } public string? Error { get; set; } }
+}

@@ -1,0 +1,455 @@
+@page "/contents/create"
+@attribute [Authorize]
+@layout DashBoardLayout
+@implements IDisposable
+
+<PageTitle>Yeni İçerik — CMS</PageTitle>
+@if (!AppState.Session.Can("content.create"))
+{
+    <AccessDenied />
+    return;
+}
+
+
+
+<PageHeader Title="Yeni İçerik">
+    <Actions>
+        <a href="/contents" class="btn btn-outline-secondary btn-sm">‹ İptal</a>
+        <button class="btn btn-outline-primary btn-sm" @onclick="() => DoSave(false)" disabled="@_saving">
+            @if (_saving)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            Taslak Kaydet
+        </button>
+        @if (AppState.Session.Can("content.publish"))
+        {
+            <button class="btn btn-success btn-sm" @onclick="() => DoSave(true)" disabled="@_saving">
+                Kaydet & Yayınla
+            </button>
+        }
+    </Actions>
+</PageHeader>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger py-2 small mb-3">@_error</div>
+}
+
+<div class="row g-3">
+    <!-- Sol: İçerik -->
+    <div class="col-12 col-xl-8">
+
+        <!-- Temel bilgiler -->
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header border-0 py-3 px-4">
+                <span class="fw-semibold" style="font-size:13px">Temel Bilgiler</span>
+            </div>
+            <div class="card-body px-4 pb-4 pt-0">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-medium">İçerik Tipi <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm" @bind="_contentType">
+                            <option value="Page">Page — Genel Sayfa</option>
+                            <option value="BlogPost">BlogPost — Blog Yazısı</option>
+                            <option value="News">News — Haber</option>
+                            <option value="Landing">Landing — Açılış Sayfası</option>
+                            <option value="Category">Category — Kategori</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-medium">Slug <span class="text-danger">*</span></label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text text-muted">/</span>
+                            <input value="@_slug"
+                                   @oninput="OnSlugInput"
+                                   type="text"
+                                   placeholder="url-dostu-baslik"
+                                   class="form-control" />
+                        </div>
+                        <div class="form-text">Küçük harf, rakam ve tire. Örn: hakkimizda-biz</div>
+                    </div>
+                    @if (_pages.Any())
+                    {
+                        <div class="col-12">
+                            <label class="form-label small fw-medium">Bağlı Sayfa (opsiyonel)</label>
+                            <select class="form-select form-select-sm" @bind="_linkedPageId">
+                                <option value="">— Sayfa bağlama</option>
+                                @foreach (var p in _pages)
+                                {
+                                    <option value="@p.Id">@(new string('·', p.Depth * 2)) @p.Label</option>
+                                }
+                            </select>
+                            <div class="form-text">Bu içeriği bir sayfa ağacı düğümüne bağlar.</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Dil sekmeleri -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header border-0 py-0 px-4">
+                <ul class="nav nav-tabs border-0">
+                    @foreach (var lang in AllLangs)
+                    {
+                        var d = _data.ContainsKey(lang) ? _data[lang] : null;
+                        var filled = d is not null && !string.IsNullOrWhiteSpace(d.Title);
+                        <li class="nav-item">
+                            <button class="nav-link @(_activeLang == lang ? "active" : "")"
+                                    style="font-size:12px;padding:10px 14px"
+                                    @onclick="() => SwitchLang(lang)">
+                                @lang.ToUpper()
+                                @if (lang == AllLangs.FirstOrDefault())
+                                {
+                                    <span class="badge bg-primary ms-1" style="font-size:9px">Ana</span>
+                                }
+                                else if (filled)
+                                {
+                                    <span class="badge bg-success ms-1" style="font-size:9px">✓</span>
+                                }
+                            </button>
+                        </li>
+                    }
+                </ul>
+            </div>
+            <div class="card-body p-4">
+                @{
+                    var cur = GetOrCreate(_activeLang);
+                    var isPrimary = _activeLang == AllLangs.FirstOrDefault();
+                }
+                <div class="mb-3">
+                    <label class="form-label fw-medium small">
+                        Başlık (@_activeLang.ToUpper())
+                        @if (isPrimary)
+                        {
+                            <span class="text-danger">*</span>
+                        }
+                    </label>
+                    <input type="text" class="form-control"
+                           value="@cur.Title"
+                           @oninput='e => { cur.Title = e.Value?.ToString() ?? ""; if (isPrimary && _slugAutoGenerate) AutoSlug(cur.Title); }'
+                           placeholder="Bu dildeki başlık..." />
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex align-items-center justify-content-between mb-1">
+                        <label class="form-label fw-medium small mb-0">İçerik (@_activeLang.ToUpper())</label>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn @(_editorMode == "text" ? "btn-secondary" : "btn-outline-secondary")"
+                                    style="font-size:10px;padding:2px 8px"
+                                    @onclick='() => _editorMode = "text"'>
+                                Metin
+                            </button>
+                            <button class="btn @(_editorMode == "html" ? "btn-secondary" : "btn-outline-secondary")"
+                                    style="font-size:10px;padding:2px 8px"
+                                    @onclick='() => _editorMode = "html"'>
+                                HTML
+                            </button>
+                        </div>
+                    </div>
+                    <textarea class="form-control @(_editorMode == "html" ? "font-monospace" : "")"
+                              rows="10"
+                              value="@cur.Body"
+                              @oninput='e => cur.Body = e.Value?.ToString() ?? ""'
+                              placeholder="@(_editorMode == "html" ? "<p>HTML içerik...</p>" : "İçerik metni...")">
+                    </textarea>
+                    @if (_editorMode == "html")
+                    {
+                        <div class="form-text">HTML modunda etiket kullanabilirsiniz: &lt;p&gt;, &lt;h2&gt;, &lt;ul&gt;, &lt;a&gt; vb.</div>
+                    }
+                </div>
+
+                <div class="border-top pt-3">
+                    <div class="d-flex align-items-center justify-content-between mb-2"
+                         style="cursor:pointer" @onclick="() => _showSeo = !_showSeo">
+                        <span class="fw-medium small">SEO Ayarları</span>
+                        <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"
+                             style="transform:@(_showSeo ? "rotate(90deg)" : "");transition:.15s">
+                            <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z" />
+                        </svg>
+                    </div>
+                    @if (_showSeo)
+                    {
+                        <div class="row g-2">
+                            <div class="col-12">
+                                <label class="form-label small">Meta Başlık</label>
+                                <input type="text" class="form-control form-control-sm"
+                                       value="@cur.MetaTitle"
+                                       @oninput="e => cur.MetaTitle = e.Value?.ToString()"
+                                       placeholder="Boş bırakılırsa başlık kullanılır" />
+                                @if ((cur.MetaTitle ?? cur.Title)?.Length > 0)
+                                {
+                                    var len = (cur.MetaTitle ?? cur.Title)!.Length;
+                                    <div class="form-text" style="color:@(len > 60 ? "var(--red)" : len > 50 ? "var(--yellow,#f59e0b)" : "var(--green)")">
+                                        @len / 60 karakter
+                                    </div>
+                                }
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small">Meta Açıklama</label>
+                                <textarea class="form-control form-control-sm" rows="2"
+                                          value="@cur.MetaDescription"
+                                          @oninput="e => cur.MetaDescription = e.Value?.ToString()"
+                                          placeholder="160 karaktere kadar..."></textarea>
+                                @if (cur.MetaDescription?.Length > 0)
+                                {
+                                    var len = cur.MetaDescription.Length;
+                                    <div class="form-text" style="color:@(len > 160 ? "var(--red)" : len > 140 ? "var(--yellow,#f59e0b)" : "var(--green)")">
+                                        @len / 160 karakter
+                                    </div>
+                                }
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small">Meta Anahtar Kelimeler</label>
+                                <input type="text" class="form-control form-control-sm"
+                                       value="@cur.MetaKeywords"
+                                       @oninput="e => cur.MetaKeywords = e.Value?.ToString()"
+                                       placeholder="kelime1, kelime2, kelime3" />
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sağ panel -->
+    <div class="col-12 col-xl-4">
+
+        <!-- Dil durumu özeti -->
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header border-0 py-3 px-3">
+                <span class="fw-semibold" style="font-size:13px">Dil Durumu</span>
+            </div>
+            <div class="card-body px-3 pb-3 pt-0">
+                @foreach (var lang in AllLangs)
+                {
+                    var d = _data.ContainsKey(lang) ? _data[lang] : null;
+                    var filled = d is not null && !string.IsNullOrWhiteSpace(d.Title);
+                    <div class="d-flex align-items-center gap-2 py-2"
+                         style="border-bottom:1px solid var(--border);cursor:pointer"
+                         @onclick="() => SwitchLang(lang)">
+                        <span class="badge @(filled ? "bg-success" : "bg-secondary")" style="font-size:10px;min-width:30px">
+                            @lang.ToUpper()
+                        </span>
+                        <div style="flex:1;font-size:12px">
+                            @if (filled)
+                            {
+                                <span>@(d!.Title!.Length > 28 ? d.Title[..28] + "…" : d.Title)</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">Boş</span>
+                            }
+                        </div>
+                        @if (lang == AllLangs.FirstOrDefault())
+                        {
+                            <span class="text-danger" style="font-size:10px">Zorunlu</span>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Zamanlama (opsiyonel) -->
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header border-0 py-3 px-3 d-flex align-items-center justify-content-between"
+                 style="cursor:pointer" @onclick="() => _showSchedule = !_showSchedule">
+                <span class="fw-semibold" style="font-size:13px">Yayın Zamanlaması</span>
+                <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"
+                     style="transform:@(_showSchedule ? "rotate(90deg)" : "");transition:.15s">
+                    <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z" />
+                </svg>
+            </div>
+            @if (_showSchedule)
+            {
+                <div class="card-body px-3 pb-3 pt-0">
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium">Yayın Tarihi</label>
+                        <input type="datetime-local" class="form-control form-control-sm" @bind="_schedPublishAt" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium">Bitiş Tarihi</label>
+                        <input type="datetime-local" class="form-control form-control-sm" @bind="_schedUnpublishAt" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium">Zaman Dilimi</label>
+                        <select class="form-select form-select-sm" @bind="_schedTz">
+                            <option value="Europe/Istanbul">Europe/Istanbul (UTC+3)</option>
+                            <option value="UTC">UTC</option>
+                            <option value="Europe/Berlin">Europe/Berlin</option>
+                            <option value="America/New_York">America/New_York</option>
+                        </select>
+                    </div>
+                    @if (_schedPublishAt.HasValue)
+                    {
+                        <div class="alert alert-info py-1 px-2 small mb-0">
+                            Zamanlanmış yayın: @_schedPublishAt.Value.ToString("dd MMM yyyy HH:mm")
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Slug önizleme -->
+        @if (!string.IsNullOrEmpty(_slug))
+        {
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-3">
+                    <div class="small fw-medium mb-1">URL Önizleme</div>
+                    <div class="mono p-2 rounded" style="background:var(--surface-2);font-size:11px;word-break:break-all;color:var(--text-2)">
+                        https://example.com/<span style="color:var(--accent)">@_slug</span>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    class LangData
+    {
+        public string Title = "";
+        public string Body = "";
+        public string? MetaTitle;
+        public string? MetaDescription;
+        public string? MetaKeywords;
+    }
+
+    record FlatPage(Guid Id, string Label, int Depth);
+
+    // Tenant'ın desteklediği diller — LangState'ten dinamik olarak alınır
+    // Fallback: LangState henüz yüklenmediyse varsayılan liste
+    static readonly string[] FallbackLangs = ["tr", "en", "de", "es", "fr", "ar"];
+
+    IEnumerable<string> AllLangs =>
+        LangState.SupportedLanguages.Count > 0
+            ? LangState.SupportedLanguages
+            : FallbackLangs;
+
+    Dictionary<string, LangData> _data = [];
+    string _activeLang = "tr";
+    string _slug = "", _contentType = "Page";
+    string? _linkedPageId;
+    string _editorMode = "text";
+    bool _showSeo = true, _showSchedule, _slugAutoGenerate = true;
+    bool _saving;
+    string _error = "";
+
+    DateTime? _schedPublishAt, _schedUnpublishAt;
+    string _schedTz = "Europe/Istanbul";
+
+    List<FlatPage> _pages = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        LangState.OnChanged += OnLangStateChanged;
+        await LangState.EnsureLoadedAsync();
+
+        // Aktif dili tenant'ın ilk diline ayarla
+        _activeLang = AllLangs.FirstOrDefault() ?? "tr";
+
+        var r = await PageApiClient.GetPageTreeDetailAsync(false);
+        if (r.IsSuccess && r.Data is not null)
+        {
+            _pages = [];
+            Flatten(r.Data, 0);
+        }
+    }
+
+    void OnLangStateChanged()
+    {
+        // Aktif dil artık desteklenmiyorsa ilk desteklenen dile geç
+        if (!AllLangs.Contains(_activeLang))
+            _activeLang = AllLangs.FirstOrDefault() ?? "tr";
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => LangState.OnChanged -= OnLangStateChanged;
+
+    void Flatten(List<PageTreeDetailNodeDto> nodes, int depth)
+    {
+        foreach (var n in nodes)
+        {
+            var label = n.Translations.FirstOrDefault()?.Title ?? n.Id.ToString()[..8];
+            _pages.Add(new(n.Id, label, depth));
+            if (n.Children.Any()) Flatten(n.Children, depth + 1);
+        }
+    }
+
+    LangData GetOrCreate(string lang)
+    {
+        if (!_data.TryGetValue(lang, out var d))
+            _data[lang] = d = new();
+        return d;
+    }
+
+    void SwitchLang(string lang) => _activeLang = lang;
+
+    void OnSlugInput(ChangeEventArgs e)
+    {
+        _slugAutoGenerate = false; // manual override
+        _slug = Slugify(e.Value?.ToString() ?? "");
+    }
+
+    void AutoSlug(string title)
+    {
+        if (_slugAutoGenerate) _slug = Slugify(title);
+    }
+
+    static string Slugify(string s) =>
+        System.Text.RegularExpressions.Regex.Replace(
+            s.ToLowerInvariant()
+             .Replace("ğ", "g").Replace("ü", "u").Replace("ş", "s")
+             .Replace("ı", "i").Replace("ö", "o").Replace("ç", "c"),
+            @"[^a-z0-9\-]+", "-").Trim('-');
+
+    async Task DoSave(bool publish)
+    {
+        _error = "";
+        var primaryLang = AllLangs.FirstOrDefault() ?? "tr";
+        var primary = GetOrCreate(primaryLang);
+
+        if (string.IsNullOrWhiteSpace(_slug)) { _error = "Slug zorunludur."; return; }
+        if (string.IsNullOrWhiteSpace(primary.Title)) { _error = "Ana dil başlığı zorunludur."; return; }
+
+        _saving = true;
+
+        var r = await ContentApiClient.CreateContentAsync(new CreateContentApiRequest(
+            _slug, primaryLang, primary.Title, primary.Body,
+            primary.MetaTitle, primary.MetaDescription, _contentType));
+
+        if (!r.IsSuccess || r.Data is null)
+        {
+            Toast.Error(r.Error?.Message ?? "Oluşturma başarısız.");
+            _saving = false;
+            return;
+        }
+
+        var id = r.Data.Id;
+
+        // Diğer diller
+        foreach (var lang in AllLangs.Skip(1))
+        {
+            var d = _data.GetValueOrDefault(lang);
+            if (d is null || string.IsNullOrWhiteSpace(d.Title)) continue;
+            await ContentApiClient.AddTranslationAsync(id, new AddTranslationApiRequest(
+                lang, d.Title, d.Body, d.MetaTitle, d.MetaDescription));
+        }
+
+        // Sayfa bağlama
+        if (!string.IsNullOrEmpty(_linkedPageId) && Guid.TryParse(_linkedPageId, out var pgId))
+            await PageApiClient.LinkPageContentAsync(pgId, id);
+
+        // Zamanlama
+        if (_schedPublishAt.HasValue)
+            await ContentApiClient.SetScheduleAsync(id, new SetScheduleRequest(
+                _schedPublishAt, _schedUnpublishAt, null, _schedTz));
+
+        // Yayınla
+        if (publish) await ContentApiClient.PublishContentAsync(id);
+
+        Nav.NavigateTo($"/contents/{id}/edit");
+    }
+}

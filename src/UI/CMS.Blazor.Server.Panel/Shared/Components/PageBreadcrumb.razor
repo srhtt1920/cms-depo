@@ -1,0 +1,34 @@
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb mb-0" style="font-size:.85rem">
+        <li class="breadcrumb-item">
+            <a href="/" class="text-decoration-none">Ana Sayfa</a>
+        </li>
+        @foreach (var seg in Segments)
+        {
+            @if (seg == Segments.Last())
+            {
+                <li class="breadcrumb-item active">@seg.Label</li>
+            }
+            else
+            {
+                <li class="breadcrumb-item">
+                    <a href="@seg.Href" class="text-decoration-none">@seg.Label</a>
+                </li>
+            }
+        }
+    </ol>
+</nav>
+
+@code {
+    record Segment(string Label, string Href);
+
+    IReadOnlyList<Segment> Segments =>
+        Nav.Uri.Replace(Nav.BaseUri, "/")
+           .Split('/', StringSplitOptions.RemoveEmptyEntries)
+           .Select((s, i) => new Segment(
+               char.ToUpper(s[0]) + s[1..],
+               "/" + string.Join("/", Nav.Uri.Replace(Nav.BaseUri, "/")
+                   .Split('/', StringSplitOptions.RemoveEmptyEntries)
+                   .Take(i + 1))))
+           .ToList();
+}

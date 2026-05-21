@@ -1,0 +1,32 @@
+<div class="dropdown">
+    <button class="btn btn-sm btn-ghost dropdown-toggle" type="button"
+            data-bs-toggle="dropdown">
+        <span style="font-size:.8rem;font-weight:600">
+            @AppState.Preferences.Language.ToUpper()
+        </span>
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end" style="min-width:130px">
+        @foreach (var l in Langs)
+        {
+            <li>
+                <button class="dropdown-item d-flex align-items-center gap-2
+                               @(AppState.Preferences.Language == l.Code ? "active" : "")"
+                        @onclick="() => Set(l.Code)">
+                    <span>@l.Flag</span>
+                    <small>@l.Label</small>
+                </button>
+            </li>
+        }
+    </ul>
+</div>
+
+@code {
+    record Lang(string Code, string Label, string Flag);
+    static readonly Lang[] Langs =
+    [
+        new("tr", "Türkçe",  "🇹🇷"),
+        new("en", "English", "🇬🇧"),
+        new("de", "Deutsch", "🇩🇪"),
+    ];
+    private async Task Set(string code) => await AppState.SetLanguageAsync(code);
+}

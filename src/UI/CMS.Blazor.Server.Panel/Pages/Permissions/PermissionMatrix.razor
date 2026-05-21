@@ -1,0 +1,312 @@
+﻿@page "/permissions/matrix"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>İzin Matrisi — CMS</PageTitle>
+
+@if (!AppState.Session.Can("roles.manage"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+
+        <div class="input-group input-group-sm" style="width:200px">
+            <span class="input-group-text bg-transparent"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" /></svg></span>
+            <input @bind="_search" @bind:event="oninput" type="text" class="form-control" placeholder="Ara..." />
+        </div>
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="İzin Matrisi">
+    <Actions>
+        <a href="/permissions" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1">
+            <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" />
+                <path d="M14.5 3a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h13zm-13-1A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 14.5 2h-13z" />
+            </svg>
+            Ağaç Görünümü
+        </a>
+        @if (_dirty)
+        {
+            <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="SaveAll" disabled="@_saving">
+                @if (_saving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Kaydet (@_dirtyRoles.ToList().Count rol)
+            </button>
+        }
+        <button class="btn-ghost btn-icon" @onclick="Load" title="Yenile">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+            </svg>
+        </button>
+    </Actions>
+</PageHeader>
+
+
+@if (!string.IsNullOrEmpty(_errorMsg))
+{
+    <div class="alert alert-danger py-2 small mb-3">@_errorMsg</div>
+}
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else
+{
+    <!-- Arama filtresi -->
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <input @bind="_search" @bind:event="oninput" type="text"
+               class="form-control form-control-sm" style="max-width:250px"
+               placeholder="İzin ara..." />
+        <label class="form-check-label small d-flex align-items-center gap-1" style="cursor:pointer">
+            <input type="checkbox" class="form-check-input" @bind="_onlyDiff" />
+            Sadece farklı olanlar
+        </label>
+        <span class="text-muted small ms-auto">
+            @FilteredGroups().SelectMany(g => g.Value).Count() izin · @_roles.Count rol
+        </span>
+    </div>
+
+    <div class="cms-table-wrap" style="overflow-x:auto">
+        <table class="cms-table" style="min-width:@(300 + _roles.Count * 90)px">
+            <thead>
+                <tr>
+                    <th style="min-width:200px;position:sticky;left:0;z-index:2;background:var(--surface)">
+                        <div class="th-inner">İzin</div>
+                    </th>
+                    @foreach (var role in _roles)
+                    {
+                        <th style="min-width:90px;text-align:center">
+                            <div class="d-flex flex-column align-items-center gap-1">
+                                <div style="width:8px;height:8px;border-radius:50%;background:@RoleColor(role.Name)"></div>
+                                <span style="font-size:11px;font-weight:600">@role.Name</span>
+                                <span style="font-size:10px;color:var(--text-3)">@GetRolePermSet(role.Id).Count / @_allPermKeys.Count</span>
+                            </div>
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var (group, perms) in FilteredGroups())
+                {
+                    <!-- Grup satırı -->
+                    <tr style="background:var(--surface-2)">
+                        <td colspan="@(_roles.Count + 1)" style="padding:6px 12px;position:sticky;left:0">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="fw-semibold" style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-3)">@group</span>
+                                <span class="badge bg-light text-dark border" style="font-size:10px">@perms.Count</span>
+                                <!-- Grup için tümünü seç/kaldır -->
+                                @foreach (var role in _roles)
+                                {
+                                    var grp = group;
+                                    var r = role;
+                                    var allOn = perms.All(p => GetRolePermSet(r.Id).Contains(p));
+                                    <button class="btn btn-ghost btn-sm ms-auto" style="font-size:10px;padding:1px 6px"
+                                            @onclick="() => ToggleGroup(r, grp, perms, !allOn)"
+                                            title="@(allOn ? "Grubu kaldır" : "Grubu ekle") — @r.Name">
+                                        @if (allOn)
+                                        {
+                                            <span style="color:var(--red)">✗ @r.Name</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:var(--green)">✓ @r.Name</span>
+                                        }
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                    <!-- İzin satırları -->
+                    @foreach (var perm in perms)
+                    {
+                        <tr>
+                            <td style="position:sticky;left:0;background:var(--surface);z-index:1">
+                                <span class="mono" style="font-size:12px">@perm</span>
+                            </td>
+                            @foreach (var role in _roles)
+                            {
+                                var p = perm;
+                                var r = role;
+                                var has = GetRolePermSet(r.Id).Contains(p);
+                                <td style="text-align:center;vertical-align:middle">
+                                    <div class="form-check d-inline-block mb-0">
+                                        <input type="checkbox" class="form-check-input"
+                                               checked="@has"
+                                               @onchange="e => TogglePerm(r, p, (bool)e.Value!)"
+                                               style="cursor:pointer" />
+                                    </div>
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+                @if (!FilteredGroups().Any())
+                {
+                    <tr><td colspan="@(_roles.Count + 1)" class="text-center text-muted py-4 small">İzin bulunamadı</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (_dirty)
+    {
+        <div class="d-flex align-items-center justify-content-end gap-2 mt-3">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="DiscardChanges">Vazgeç</button>
+            <button class="btn btn-primary btn-sm" @onclick="SaveAll" disabled="@_saving">
+                @if (_saving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                @_dirtyRoles.ToList().Count rol için kaydet
+            </button>
+        </div>
+    }
+}
+
+@code {
+    List<RoleListDto> _roles = [];
+    HashSet<string> _allPermKeys = [];
+    // roleId → editable permission set
+    Dictionary<Guid, HashSet<string>> _rolePerm = [];
+    // original snapshot for dirty tracking
+    Dictionary<Guid, HashSet<string>> _original = [];
+
+    bool _loading = true, _saving;
+    string _search = "";
+    bool _onlyDiff;
+    string? _errorMsg;
+
+    IEnumerable<Guid> _dirtyRoles => _roles
+    .Where(r => !GetRolePermSet(r.Id).SetEquals(_original.GetValueOrDefault(r.Id, [])))
+    .Select(r => r.Id);
+
+    bool _dirty => _dirtyRoles.ToList().Count > 0;
+
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    async Task Load()
+    {
+        _loading = true; _errorMsg = null; StateHasChanged();
+
+        var rolesR = await RoleApiClient.GetRolesAsync();
+        var permsR = await AuthApiClient.GetPermissionsAsync();
+
+        if (rolesR.IsSuccess && rolesR.Data is not null)
+        {
+            _roles = rolesR.Data;
+            _rolePerm = _roles.ToDictionary(r => r.Id, r => new HashSet<string>(r.PermissionKeys));
+            _original = _roles.ToDictionary(r => r.Id, r => new HashSet<string>(r.PermissionKeys));
+        }
+
+        if (permsR.IsSuccess && permsR.Data is not null)
+            _allPermKeys = new HashSet<string>(FlatAll(permsR.Data.Tree));
+
+        _loading = false;
+    }
+
+    HashSet<string> GetRolePermSet(Guid id) => _rolePerm.GetValueOrDefault(id, []);
+
+    void TogglePerm(RoleListDto role, string perm, bool on)
+    {
+        var set = GetRolePermSet(role.Id);
+        if (on) set.Add(perm); else set.Remove(perm);
+    }
+
+    void ToggleGroup(RoleListDto role, string _, List<string> perms, bool on)
+    {
+        var set = GetRolePermSet(role.Id);
+        foreach (var p in perms)
+            if (on) set.Add(p); else set.Remove(p);
+    }
+
+    async Task SaveAll()
+    {
+        _saving = true; _errorMsg = null; _errorMsg = null; StateHasChanged();
+        var failed = new List<string>();
+        foreach (var roleId in _dirtyRoles.ToList())
+        {
+            var role = _roles.First(r => r.Id == roleId);
+            var r = await RoleApiClient.UpdateRoleAsync(roleId, new UpdateRoleApiRequest(role.Name, [.. GetRolePermSet(roleId)]));
+            if (r.IsSuccess)
+                _original[roleId] = new HashSet<string>(GetRolePermSet(roleId));
+            else
+                failed.Add(role.Name);
+        }
+        _saving = false;
+        if (failed.Any()) _errorMsg = $"Kaydedilemedi: {string.Join(", ", failed)}";
+        else Toast.Success("Tüm değişiklikler kaydedildi.");
+    }
+
+    void DiscardChanges()
+    {
+        foreach (var r in _roles)
+            _rolePerm[r.Id] = new HashSet<string>(_original[r.Id]);
+    }
+
+    Dictionary<string, List<string>> FilteredGroups()
+    {
+        var result = new Dictionary<string, List<string>>();
+        foreach (var key in _allPermKeys)
+        {
+            if (!string.IsNullOrEmpty(_search) &&
+                !key.Contains(_search, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (_onlyDiff)
+            {
+                // En az iki rol arasında fark varsa göster
+                var vals = _roles.Select(r => GetRolePermSet(r.Id).Contains(key)).Distinct().ToList();
+                if (vals.Count < 2) continue;
+            }
+
+            var grp = key.Split('.')[0];
+            if (!result.ContainsKey(grp)) result[grp] = [];
+            result[grp].Add(key);
+        }
+        return result;
+    }
+
+    IEnumerable<string> FlatAll(List<PermissionNodeDto> nodes)
+    {
+        foreach (var n in nodes)
+        {
+            yield return n.Key;
+            foreach (var c in FlatAll(n.Children)) yield return c;
+        }
+    }
+
+    static string RoleColor(string name) => name.ToLower() switch
+    {
+        var n when n.Contains("admin") => "#dc3545",
+        var n when n.Contains("editor") => "#0d6efd",
+        var n when n.Contains("viewer") => "#198754",
+        _ => "#6c757d"
+    };
+}

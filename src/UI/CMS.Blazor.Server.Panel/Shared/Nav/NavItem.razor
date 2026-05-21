@@ -1,0 +1,15 @@
+<div class="nav-item-wrap mb-px">
+    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-2 text-white"
+             href="@Href"
+             Match="@(Href == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)"
+             ActiveClass="nav-active">
+        <NavIcon Name="@Icon" />
+        <span style="font-size:.875rem">@Label</span>
+    </NavLink>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Href  { get; set; } = "/";
+    [Parameter, EditorRequired] public string Icon  { get; set; } = "home";
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+}

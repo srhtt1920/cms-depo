@@ -1,0 +1,191 @@
+﻿@page "/permissions"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>İzinler — CMS</PageTitle>
+
+@if (!AppState.Session.Can("roles.manage"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+
+        <div class="input-group input-group-sm" style="width:200px">
+            <span class="input-group-text bg-transparent"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" /></svg></span>
+            <input @bind="_search" @bind:event="oninput" type="text" class="form-control" placeholder="Ara..." />
+        </div>
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="İzin Ağacı">
+    <Actions>
+        <a href="/permissions/matrix" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1">
+            <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v4h4V1H2zm5 0v4h4V1H7zm5 0v4h4V2a1 1 0 0 0-1-1h-3zm4 5H9v4h6V6zm0 5H9v4h3a1 1 0 0 0 1-1v-3zm-7 4V11H1v3a1 1 0 0 0 1 1h3zm-4-5h5V6H1v4z" />
+            </svg>
+            Matrix Görünümü
+        </a>
+        <button class="btn-ghost btn-icon" @onclick="Load" title="Yenile">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+            </svg>
+        </button>
+    </Actions>
+</PageHeader>
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger py-2 small">@_error</div>
+}
+else if (_tree is not null)
+{
+    <div class="row g-3">
+        <!-- Sol: İzin Ağacı -->
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm h-100" style="background:var(--surface)">
+                <div class="card-header border-0 pb-0 pt-3 px-3">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <span class="fw-semibold" style="font-size:13px">Benim İzinlerim</span>
+                        <span class="badge bg-success">@_tree.Tree.SelectMany(FlattenGranted).Count() aktif</span>
+                    </div>
+                    <div class="text-muted" style="font-size:11px;margin-top:2px">v@_tree.Version</div>
+                </div>
+                <div class="card-body p-2">
+                    @foreach (var node in _tree.Tree)
+                    {
+                        <PermissionNodeView Node="node" Level="0" />
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Sağ: Roller ve izin dağılımı -->
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm" style="background:var(--surface)">
+                <div class="card-header border-0 pb-0 pt-3 px-3">
+                    <span class="fw-semibold" style="font-size:13px">Rol İzin Dağılımı</span>
+                </div>
+                <div class="card-body p-3">
+                    @if (_rolesLoading)
+                    {
+                        <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>
+                    }
+                    else
+                    {
+                        @foreach (var role in _roles)
+                        {
+                            var grantedPct = _allPermKeys.Count > 0
+                            ? (int)((double)role.PermissionKeys.Count / _allPermKeys.Count * 100)
+                            : 0;
+                            <div class="mb-3 p-3 rounded" style="border:1px solid var(--border);background:var(--surface-2)">
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div style="width:8px;height:8px;border-radius:50%;background:@RoleColor(role.Name);flex-shrink:0"></div>
+                                        <span class="fw-medium" style="font-size:13px">@role.Name</span>
+                                        <span class="badge bg-light text-dark border" style="font-size:10px">@role.UserCount kullanıcı</span>
+                                    </div>
+                                    <span style="font-size:11px;color:var(--text-3)">@role.PermissionKeys.Count / @_allPermKeys.Count</span>
+                                </div>
+                                <div class="progress" style="height:4px;border-radius:2px">
+                                    <div class="progress-bar" style="width:@grantedPct%;background:@RoleColor(role.Name)"></div>
+                                </div>
+                                <div class="d-flex flex-wrap gap-1 mt-2">
+                                    @foreach (var key in role.PermissionKeys.Take(6))
+                                    {
+                                        <span class="badge" style="background:var(--surface);border:1px solid var(--border);color:var(--text-2);font-size:10px;font-family:monospace">@key</span>
+                                    }
+                                    @if (role.PermissionKeys.Count > 6)
+                                    {
+                                        <span class="badge bg-secondary" style="font-size:10px">+@(role.PermissionKeys.Count - 6) daha</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @if (!_roles.Any())
+                        {
+                            <div class="text-center text-muted py-4 small">Rol bulunamadı</div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    PermissionTreeDto? _tree;
+    List<RoleListDto> _roles = [];
+    HashSet<string> _allPermKeys = [];
+    bool _loading = true, _rolesLoading = true;
+    string? _error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    async Task Load()
+    {
+        _loading = true; _error = null; StateHasChanged();
+        var r = await AuthApiClient.GetPermissionsAsync();
+        if (r.IsSuccess && r.Data is not null)
+        {
+            _tree = r.Data;
+            _allPermKeys = new HashSet<string>(FlattenAll(_tree.Tree));
+        }
+        else Toast.Error(r.Error?.Message ?? "İzinler yüklenemedi.");
+        _loading = false;
+
+        // Rolleri paralel yükle
+        var rr = await RoleApiClient.GetRolesAsync();
+        if (rr.IsSuccess) _roles = rr.Data ?? [];
+        _rolesLoading = false;
+    }
+
+    IEnumerable<string> FlattenAll(List<PermissionNodeDto> nodes)
+    {
+        foreach (var n in nodes)
+        {
+            yield return n.Key;
+            foreach (var c in FlattenAll(n.Children)) yield return c;
+        }
+    }
+
+    IEnumerable<string> FlattenGranted(PermissionNodeDto node)
+    {
+        if (node.Granted) yield return node.Key;
+        foreach (var c in node.Children)
+            foreach (var g in FlattenGranted(c)) yield return g;
+    }
+
+    static string RoleColor(string name) => name.ToLower() switch
+    {
+        var n when n.Contains("admin") => "#dc3545",
+        var n when n.Contains("editor") => "#0d6efd",
+        var n when n.Contains("viewer") => "#198754",
+        _ => "#6c757d"
+    };
+}

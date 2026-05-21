@@ -1,0 +1,55 @@
+﻿<div class="@WrapperClass">
+
+    @if (ShowIcon)
+    {
+        <span class="input-group-text bg-transparent">
+            <SvgIcon Name="@Icon"
+                     Size="@IconSize.ToString()" />
+        </span>
+    }
+
+    <input value="@Value"
+           @oninput="HandleInput"
+           type="@Type"
+           class="@InputClass"
+           placeholder="@Placeholder" />
+</div>
+
+@code {
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter]
+    public string Placeholder { get; set; } = "Ara...";
+
+    [Parameter]
+    public string Type { get; set; } = "text";
+
+    [Parameter]
+    public string WrapperClass { get; set; } =
+        "input-group input-group-sm";
+
+    [Parameter]
+    public string InputClass { get; set; } =
+        "form-control";
+
+    [Parameter]
+    public bool ShowIcon { get; set; } = true;
+
+    [Parameter]
+    public string Icon { get; set; } = "icon-search";
+
+    [Parameter]
+    public int IconSize { get; set; } = 12;
+
+    private async Task HandleInput(ChangeEventArgs e)
+    {
+        Value = e.Value?.ToString() ?? string.Empty;
+
+        await ValueChanged.InvokeAsync(Value);
+    }
+}

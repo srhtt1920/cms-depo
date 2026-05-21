@@ -1,0 +1,431 @@
+﻿@page "/settings/nav-editor"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Menü Düzenleyici — CMS</PageTitle>
+@if (!AppState.Session.Can("users.manage"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Menü Düzenleme 1</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-sm btn-success cms-btn-icon" @onclick="Save" disabled="@_saving">
+            @if (_saving)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            <SvgIcon Name="icon-save" Size="13" />
+            <span>Kaydet</span>
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <button class="btn-ghost btn-icon" title="Sıfırla" @onclick="Reset">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+            </svg>
+        </button>
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+        <div class="row g-3">
+            <!-- Sol: Editor -->
+            <div class="col-12 col-lg-7">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                        <span class="fw-semibold small">Menü Öğeleri</span>
+                        <div class="d-flex gap-2">
+                            <!-- Tab seçici -->
+                            @foreach (var tab in _tabs)
+                            {
+                                var t = tab;
+                                <button class="btn btn-sm @(_activeTab == t.Key ? "btn-primary" : "btn-outline-secondary")"
+                                        style="font-size:11px"
+                                        @onclick="() => _activeTab = t.Key">
+                                    @t.Label
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <!-- Draggable list -->
+                        <div class="nav-drag-list">
+                            @foreach (var item in VisibleItems)
+                            {
+                                var it = item;
+                                <div class="nav-drag-item @(it.Id == _dragging?.Id ? "dragging" : "") @(!it.IsVisible ? "nav-item-hidden" : "")"
+                                     draggable="true"
+                                     @ondragstart="() => _dragging = it"
+                                     @ondragover:preventDefault
+                                     @ondragover="() => _dragTarget = it"
+                                     @ondrop="() => Drop(it)"
+                                     @ondragend="() => { _dragging = null; _dragTarget = null; }">
+                                    <!-- Drag handle -->
+                                    <span class="drag-handle">⠿</span>
+                                    <!-- Indent for sub-items (custom links can be nested) -->
+                                    <span style="width:@(it.IsBuiltIn ? 0 : 16)px;display:inline-block"></span>
+                                    <!-- Icon -->
+                                    <SvgIcon Name="@it.Icon" Size="13" Style="flex-shrink:0;margin-right:6px" />
+                                    <!-- Label -->
+                                    @if (_editing == it.Id)
+                                    {
+                                        <input class="form-control form-control-sm d-inline-block"
+                                               style="width:160px;height:24px;font-size:12px"
+                                               @bind="_editLabel"
+                                               @onblur="() => ApplyLabel(it)"
+                                               @onkeydown='e => { if (e.Key == "Enter") ApplyLabel(it); }' />
+                                    }
+                                    else
+                                    {
+                                        <span class="nav-item-label @(!it.IsVisible ? "text-decoration-line-through text-muted" : "")"
+                                              @ondblclick="() => StartEdit(it)">
+                                            @it.Label
+                                        </span>
+                                    }
+                                    <!-- URL -->
+                                    <code class="ms-2 text-muted" style="font-size:10px">@it.Href</code>
+                                    <!-- Perm badge -->
+                                    @if (!string.IsNullOrEmpty(it.RequiredPerm))
+                                    {
+                                        <span class="badge bg-secondary ms-auto me-2" style="font-size:9px">@it.RequiredPerm</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="ms-auto"></span>
+                                    }
+                                    <!-- Actions -->
+                                    <div class="nav-item-actions">
+                                        <button class="btn-ghost btn-icon" style="width:20px;height:20px"
+                                                title="@(it.IsVisible ? "Gizle" : "Göster")"
+                                                @onclick="() => ToggleVisible(it)"
+                                                @onclick:stopPropagation>
+                                            @if (it.IsVisible)
+                                            {
+                                                <svg width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
+                                                    <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z" />
+                                                    <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z" />
+                                                </svg>
+                                            }
+                                            else
+                                            {
+                                                <svg width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
+                                                    <path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486z" />
+                                                    <path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z" />
+                                                    <path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238z" />
+                                                    <path fill-rule="evenodd" d="M13.646 14.354l-12-12 .708-.708 12 12-.708.708z" />
+                                                </svg>
+                                            }
+                                        </button>
+                                        @if (!it.IsBuiltIn)
+                                        {
+                                            <button class="btn-ghost btn-icon" style="width:20px;height:20px;color:var(--red)"
+                                                    title="Sil" @onclick="() => DeleteItem(it)" @onclick:stopPropagation>
+                                                <svg width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
+                                                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z" />
+                                                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3V2h11v1z" />
+                                                </svg>
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Yeni öğe ekle -->
+                        <div class="p-3 border-top">
+                            <div class="fw-semibold small mb-2">Özel Link Ekle</div>
+                            <div class="row g-2">
+                                <div class="col-5">
+                                    <input class="form-control form-control-sm" placeholder="Etiket"
+                                           @bind="_newLabel" />
+                                </div>
+                                <div class="col-5">
+                                    <input class="form-control form-control-sm" placeholder="/yol"
+                                           @bind="_newHref" />
+                                </div>
+                                <div class="col-2">
+                                    <button class="btn btn-sm btn-primary w-100" @onclick="AddCustom">+</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sağ: Önizleme -->
+            <div class="col-12 col-lg-5">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                        <span class="fw-semibold small">Rol Önizlemesi</span>
+                        <select class="form-select form-select-sm" style="width:160px"
+                                @bind="_previewRole">
+                            <option value="">Admin (Tüm İzinler)</option>
+                            <option value="editor">Editor</option>
+                            <option value="viewer">Viewer</option>
+                        </select>
+                    </div>
+                    <div class="card-body p-2" style="background:var(--surface-2);border-radius:0 0 var(--r-md) var(--r-md)">
+                        <!-- Simulated sidebar preview -->
+                        <div class="preview-sidebar border rounded-2 bg-surface-0 p-2"
+                             style="min-height:400px;background:var(--surface-0)">
+                            <div class="fw-semibold small mb-2 text-muted px-1">CMS Panel</div>
+                            @foreach (var tab in _tabs)
+                            {
+                                var t = tab;
+                                var items = PreviewItems(t.Key);
+                                @if (items.Any())
+                                {
+                                    <div class="preview-group mb-1">
+                                        <div class="preview-group-label">
+                                            <SvgIcon Name="@t.Icon" Size="11" Style="margin-right:4px;opacity:.6" />
+                                            @t.Label
+                                        </div>
+                                        @foreach (var item in items)
+                                        {
+                                            <div class="preview-item">
+                                                <SvgIcon Name="@item.Icon" Size="12" Style="margin-right:6px;opacity:.7" />
+                                                @item.Label
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+<style>
+    .nav-drag-list {
+        padding: 4px 0;
+    }
+
+    .nav-drag-item {
+        display: flex;
+        align-items: center;
+        padding: 7px 12px;
+        border-bottom: 1px solid var(--border);
+        transition: background .1s;
+        gap: 4px;
+    }
+
+        .nav-drag-item:hover {
+            background: var(--surface-1);
+        }
+
+        .nav-drag-item.dragging {
+            opacity: .5;
+            background: var(--brand-light);
+        }
+
+        .nav-drag-item.nav-item-hidden {
+            opacity: .5;
+        }
+
+    .drag-handle {
+        cursor: grab;
+        color: var(--text-3);
+        font-size: 16px;
+        margin-right: 6px;
+        flex-shrink: 0;
+    }
+
+    .nav-item-label {
+        font-size: 12px;
+        font-weight: 500;
+        cursor: text;
+    }
+
+    .nav-item-actions {
+        display: flex;
+        gap: 2px;
+        opacity: 0;
+        transition: opacity .15s;
+    }
+
+    .nav-drag-item:hover .nav-item-actions {
+        opacity: 1;
+    }
+
+    .preview-group {
+    }
+
+    .preview-group-label {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: var(--text-3);
+        padding: 6px 8px 2px;
+    }
+
+    .preview-item {
+        display: flex;
+        align-items: center;
+        font-size: 12px;
+        padding: 5px 8px;
+        border-radius: var(--r-sm);
+        color: var(--text-2);
+        margin-bottom: 1px;
+    }
+
+        .preview-item:hover {
+            background: var(--surface-2);
+        }
+</style>
+
+@code {
+    bool _saving;
+    string _activeTab = "dashboard";
+    string _previewRole = "";
+    string? _editing;
+    string _editLabel = "";
+    string _newLabel = "", _newHref = "";
+
+    NavMenuEntry? _dragging, _dragTarget;
+
+    List<NavTabDef> _tabs = NavMenuState.BuiltInTabs.OrderBy(t => t.Order).ToList();
+    List<NavMenuEntry> _items = [];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        await PermSync.SyncIfNeededAsync();
+        await NavMenu.EnsureLoadedAsync();
+        LoadItems();
+        StateHasChanged();
+    }
+
+    void LoadItems()
+    {
+        _items = NavMenuState.BuiltInEntries
+            .Concat(new List<NavMenuEntry>()) // custom entries would come from NavMenu
+            .OrderBy(e => e.TabKey)
+            .ThenBy(e => e.Order)
+            .ToList();
+    }
+
+    IEnumerable<NavMenuEntry> VisibleItems =>
+        _items.Where(i => i.TabKey == _activeTab).OrderBy(i => i.Order);
+
+    IEnumerable<NavMenuEntry> PreviewItems(string tabKey)
+    {
+        var perm = _previewRole switch
+        {
+            "editor" => new HashSet<string> { "content.read", "content.create", "content.edit", "content.publish" },
+            "viewer" => new HashSet<string> { "content.read" },
+            _ => null, // admin = all
+        };
+
+        return _items
+            .Where(i => i.TabKey == tabKey && i.IsVisible)
+            .Where(i => perm is null || string.IsNullOrEmpty(i.RequiredPerm) || perm.Contains(i.RequiredPerm))
+            .OrderBy(i => i.Order);
+    }
+
+    void ToggleVisible(NavMenuEntry item)
+    {
+        var idx = _items.IndexOf(item);
+        if (idx < 0) return;
+        _items[idx] = item with { IsVisible = !item.IsVisible };
+    }
+
+    void DeleteItem(NavMenuEntry item)
+    {
+        if (item.IsBuiltIn) return;
+        _items.Remove(item);
+    }
+
+    void StartEdit(NavMenuEntry item)
+    {
+        _editing = item.Id;
+        _editLabel = item.Label;
+    }
+
+    void ApplyLabel(NavMenuEntry item)
+    {
+        var idx = _items.IndexOf(item);
+        if (idx >= 0 && !string.IsNullOrWhiteSpace(_editLabel))
+            _items[idx] = item with { Label = _editLabel };
+        _editing = null;
+    }
+
+    void AddCustom()
+    {
+        if (string.IsNullOrWhiteSpace(_newLabel) || string.IsNullOrWhiteSpace(_newHref)) return;
+        var maxOrder = _items.Where(i => i.TabKey == _activeTab).Select(i => i.Order).DefaultIfEmpty(0).Max();
+        _items.Add(new NavMenuEntry(
+            Guid.NewGuid().ToString("N"), _newLabel, _newHref,
+            "link", _activeTab, "",
+            maxOrder + 1, IsBuiltIn: false));
+        _newLabel = _newHref = "";
+    }
+
+    void Drop(NavMenuEntry target)
+    {
+        if (_dragging is null || _dragging.Id == target.Id) return;
+        var srcIdx = _items.IndexOf(_dragging);
+        var tgtIdx = _items.IndexOf(target);
+        if (srcIdx < 0 || tgtIdx < 0) return;
+
+        _items.RemoveAt(srcIdx);
+        _items.Insert(tgtIdx, _dragging);
+
+        // Re-assign orders for this tab
+        int order = 0;
+        foreach (var item in _items.Where(i => i.TabKey == _activeTab).ToList())
+        {
+            var idx = _items.IndexOf(item);
+            if (idx >= 0) _items[idx] = item with { Order = order++ };
+        }
+
+        _dragging = null;
+        _dragTarget = null;
+    }
+
+    async Task Save()
+    {
+        _saving = true;
+        foreach (var item in _items)
+        {
+            await NavMenu.SetVisibilityAsync(item.Id, item.IsVisible);
+            await NavMenu.SetOrderAsync(item.Id, item.Order);
+            if (!item.IsBuiltIn)
+            {
+                // custom entries are managed separately
+            }
+        }
+        _saving = false;
+        Toast.Success("Menü yapısı kaydedildi ✓");
+        StateHasChanged();
+    }
+
+    async Task Reset()
+    {
+        await NavMenu.ResetAsync();
+        LoadItems();
+        Toast.Info("Menü varsayılana sıfırlandı.");
+        StateHasChanged();
+    }
+}

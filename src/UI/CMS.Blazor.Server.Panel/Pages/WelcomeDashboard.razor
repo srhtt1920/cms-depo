@@ -1,0 +1,260 @@
+@page "/welcome"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Hoş Geldiniz — CMS</PageTitle>
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+
+<div class="welcome-shell">
+
+    <!-- ── Hero Banner ──────────────────────────────────────────── -->
+    <div class="welcome-hero mb-4">
+        <div class="welcome-hero-left">
+            <div class="welcome-wave mb-2">👋</div>
+            <h4 class="fw-bold mb-1">Hoş geldiniz, @_firstName!</h4>
+            <p class="text-muted small mb-3">
+                <strong>@AppState.Session.CurrentTenantName</strong> CMS paneline bağlandınız.
+                Nereye gideceğinizden emin değilseniz hızlı başlangıç için aşağıdaki adımları takip edin.
+            </p>
+            <div class="d-flex align-items-center gap-2">
+                <div class="progress flex-fill" style="height:6px;border-radius:3px">
+                    <div class="progress-bar" style="width:@SetupProgress%;background:var(--accent);transition:.6s ease"></div>
+                </div>
+                <span class="small fw-medium" style="color:var(--accent)">%@SetupProgress Tamamlandı</span>
+            </div>
+        </div>
+        <div class="welcome-hero-right d-none d-lg-flex">
+            <svg width="120" height="100" viewBox="0 0 120 100" fill="none">
+                <rect x="10" y="20" width="60" height="70" rx="6" fill="var(--surface-3)" />
+                <rect x="16" y="28" width="48" height="6" rx="3" fill="var(--accent)" opacity=".7" />
+                <rect x="16" y="40" width="36" height="4" rx="2" fill="var(--border)" />
+                <rect x="16" y="50" width="42" height="4" rx="2" fill="var(--border)" />
+                <rect x="16" y="60" width="30" height="4" rx="2" fill="var(--border)" />
+                <rect x="78" y="10" width="34" height="44" rx="5" fill="var(--surface-2)" stroke="var(--border)" />
+                <circle cx="95" cy="26" r="8" fill="var(--accent)" opacity=".2" />
+                <path d="M91 26l3 3 5-5" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" fill="none" />
+                <rect x="82" y="38" width="22" height="3" rx="1.5" fill="var(--border)" />
+                <rect x="82" y="44" width="16" height="3" rx="1.5" fill="var(--border)" />
+            </svg>
+        </div>
+    </div>
+
+    <!-- ── Quick Actions ────────────────────────────────────────── -->
+    <h6 class="fw-semibold mb-2" style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-3)">Hızlı Eylemler</h6>
+    <div class="row g-2 mb-4">
+        @foreach (var qa in QuickActions)
+        {
+            <div class="col-12 col-sm-6 col-lg-3">
+                <a href="@qa.Href" class="quick-action-card">
+                    <div class="qa-icon" style="background:@qa.IconBg;color:@qa.IconColor">@((MarkupString)qa.Icon)</div>
+                    <div class="qa-body">
+                        <div class="qa-title">@qa.Title</div>
+                        <div class="qa-desc">@qa.Desc</div>
+                    </div>
+                    <svg class="qa-arrow" width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z" />
+                    </svg>
+                </a>
+            </div>
+        }
+    </div>
+
+    <div class="row g-3">
+        <!-- ── Setup Checklist ─────────────────────────────────── -->
+        <div class="col-12 col-lg-5">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                    <span class="fw-semibold small">Başlangıç Adımları</span>
+                    <span class="badge" style="background:var(--brand-light,#ede9fe);color:var(--accent)">
+                        @_setupItems.Count(x => x.Done) / @_setupItems.Count
+                    </span>
+                </div>
+                <div class="list-group list-group-flush">
+                    @foreach (var item in _setupItems)
+                    {
+                        <a href="@item.Href" class="list-group-item list-group-item-action px-3 py-2 d-flex align-items-center gap-3 @(item.Done ? "opacity-50" : "")">
+                            <div class="setup-check @(item.Done ? "done" : "")">
+                                @if (item.Done)
+                                {
+                                    <svg width="10" height="10" fill="#fff" viewBox="0 0 16 16">
+                                        <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" />
+                                    </svg>
+                                }
+                            </div>
+                            <div class="flex-fill">
+                                <div class="fw-medium" style="font-size:13px">@item.Title</div>
+                                <div style="font-size:11px;color:var(--text-3)">@item.Desc</div>
+                            </div>
+                            @if (!item.Done)
+                            {
+                                <span class="badge" style="background:var(--accent);color:#fff;font-size:9px">Başla</span>
+                            }
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Son Aktiviteler ────────────────────────────────── -->
+        <div class="col-12 col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-transparent py-2 px-3">
+                    <span class="fw-semibold small">Son Aktiviteler</span>
+                </div>
+                <div class="card-body p-0">
+                    @if (!RecentActivity.Any())
+                    {
+                        <div class="text-center p-4 text-muted" style="font-size:13px">
+                            <div style="font-size:28px;margin-bottom:8px">📭</div>
+                            Henüz aktivite yok.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="activity-feed">
+                            @foreach (var act in RecentActivity)
+                            {
+                                <div class="activity-item">
+                                    <div class="activity-dot" style="background:@act.Color"></div>
+                                    <div class="flex-fill">
+                                        <div style="font-size:12px;font-weight:500">@act.Text</div>
+                                        <div style="font-size:11px;color:var(--text-4)">@act.When</div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Bana Atanan Görevler ───────────────────────────── -->
+        <div class="col-12 col-lg-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                    <span class="fw-semibold small">Bekleyen Görevler</span>
+                    @if (_tasks.Count > 0)
+                    {
+                        <span class="badge bg-danger" style="font-size:10px">@_tasks.Count</span>
+                    }
+                </div>
+                <div class="card-body p-0">
+                    @if (!_tasks.Any())
+                    {
+                        <div class="text-center p-4 text-muted" style="font-size:12px">
+                            <div style="font-size:26px;margin-bottom:6px">🎉</div>
+                            Tüm görevler tamamlandı!
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var task in _tasks)
+                        {
+                            <a href="@task.Href" class="task-item d-flex align-items-start gap-2 px-3 py-2 border-bottom" style="border-bottom:1px solid var(--border);text-decoration:none;color:inherit">
+                                <div class="task-priority" style="background:@task.PriorityColor"></div>
+                                <div class="flex-fill">
+                                    <div style="font-size:12px;font-weight:500;line-height:1.3">@task.Title</div>
+                                    <div style="font-size:10px;color:var(--text-4)">@task.Meta</div>
+                                </div>
+                            </a>
+                        }
+                    }
+                </div>
+                @if (_tasks.Any())
+                {
+                    <div class="p-2 border-top" style="border-top:1px solid var(--border)">
+                        <a href="/contents?filter=pending" class="btn btn-link btn-sm w-100 text-center" style="font-size:11px">
+                            Tüm Görevleri Gör →
+                        </a>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+
+@code {
+    string _firstName => AppState.Session?.Email?.Split('@')[0].Split('.')[0] is { Length: > 0 } s
+        ? char.ToUpper(s[0]) + s[1..] : "Kullanıcı";
+    string _search = "";
+    // API'den yüklenen istatistikler
+    DashboardStatsDto? _stats;
+    bool _statsLoading = true;
+
+    // Setup checklist — bazı adımlar API verisiyle dinamik olarak işaretlenir
+    List<SetupItem> _setupItems = new()
+    {
+        new("✅ Hesabınızı oluşturdunuz",     "Hoş geldiniz!",                     "/",                true),
+        new("🎨 Marka ayarlarını yapın",       "Logo, renk ve domain ekleyin",       "/tenants",         false),
+        new("👤 İlk kullanıcıyı davet edin",   "Ekibinizi sisteme davet edin",       "/users",           false),
+        new("📄 İlk içeriği oluşturun",        "Sayfanızı veya blog yazınızı yazın", "/contents/create", false),
+        new("🚀 İçeriği yayınlayın",           "Yayın akışını keşfedin",             "/contents",        false),
+    };
+
+    IEnumerable<QuickAction> QuickActions => new[]
+    {
+        new QuickAction("Yeni İçerik",    "Sayfa veya blog yaz",    "/contents/create", "#ede9fe","#7c3aed",
+            "<svg width='18' height='18' fill='currentColor' viewBox='0 0 16 16'><path d='M14.5 3a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h13zm-13-1A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 14.5 2h-13z'/><path d='M3 5.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5zM3 8a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9A.5.5 0 0 1 3 8zm0 2.5a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5z'/></svg>"),
+        new QuickAction("Kullanıcı Davet","Ekibini büyüt",          "/users",          "#dcfce7","#15803d",
+            "<svg width='18' height='18' fill='currentColor' viewBox='0 0 16 16'><path d='M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm6.146-2.854a.5.5 0 0 1 .708 0L14 6.293l1.146-1.147a.5.5 0 0 1 .708.708L14.707 7l1.147 1.146a.5.5 0 0 1-.708.708L14 7.707l-1.146 1.147a.5.5 0 0 1-.708-.708L13.293 7l-1.147-1.146a.5.5 0 0 1 0-.708z'/></svg>"),
+        new QuickAction("Sayfalar",       "Site yapını yönet",       "/pages",          "#fef9c3","#a16207",
+            "<svg width='18' height='18' fill='currentColor' viewBox='0 0 16 16'><path d='M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z'/></svg>"),
+        new QuickAction("Audit Log",      "Ne olduğunu takip et",    "/audit-logs",     "#fee2e2","#b91c1c",
+            "<svg width='18' height='18' fill='currentColor' viewBox='0 0 16 16'><path d='M11 5.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5zm-7 0a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm7 0a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5z'/><path d='M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm0 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H3z'/></svg>"),
+    };
+
+    int SetupProgress => (int)Math.Round(_setupItems.Count(x => x.Done) * 100.0 / _setupItems.Count);
+
+    // Son aktiviteler — API'den
+    IEnumerable<DashboardActivityDto> RecentActivity =>
+        _stats?.RecentActivity ?? [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await DashboardApiClient.GetDashboardStatsAsync();
+        if (result.IsSuccess)
+        {
+            _stats = result.Data;
+
+            // Setup checklist'i API verisiyle güncelle
+            if (_stats!.TotalContents > 0)
+                _setupItems[3] = _setupItems[3] with { Done = true };
+            if (_stats.PublishedContents > 0)
+                _setupItems[4] = _setupItems[4] with { Done = true };
+            if (_stats.TotalUsers > 1)
+                _setupItems[2] = _setupItems[2] with { Done = true };
+        }
+        _statsLoading = false;
+    }
+
+    // Bekleyen görevler (onay bekleyen içerikler API'den doldurulur)
+    List<TaskItem> _tasks = [];
+
+    record SetupItem(string Title, string Desc, string Href, bool Done);
+    record QuickAction(string Title, string Desc, string Href, string IconBg, string IconColor, string Icon);
+    record TaskItem(string Title, string Meta, string Href, string PriorityColor);
+}

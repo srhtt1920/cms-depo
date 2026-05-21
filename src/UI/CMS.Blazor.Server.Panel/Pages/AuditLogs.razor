@@ -1,0 +1,298 @@
+@page "/audit-logs"
+@attribute [Authorize]
+@layout DashBoardLayout
+@implements IDisposable
+
+<PageTitle>Audit Log — CMS</PageTitle>
+
+@if (!AppState.Session.Can("tenants.manage"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="Audit Log">
+    <Actions>
+        <button class="btn-ghost btn-icon" @onclick="LoadAsync" title="Yenile">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+            </svg>
+        </button>
+    </Actions>
+</PageHeader>
+
+<!-- Filtreler -->
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <input @bind="_filterEntityType" @bind:event="oninput" @bind:after="OnFilterChanged"
+           type="text" class="form-control form-control-sm"
+           style="max-width:160px" placeholder="Entity tipi..." />
+
+    <input @bind="_filterAction" @bind:event="oninput" @bind:after="OnFilterChanged"
+           type="text" class="form-control form-control-sm"
+           style="max-width:160px" placeholder="Eylem tipi..." />
+
+    <input @bind="_filterEmail" @bind:event="oninput" @bind:after="OnFilterChanged"
+           type="text" class="form-control form-control-sm"
+           style="max-width:190px" placeholder="Kullanıcı e-posta..." />
+
+    <input @bind="_filterDateFrom" @bind:event="oninput" type="date"
+           class="form-control form-control-sm" style="max-width:150px" title="Başlangıç tarihi" />
+    <input @bind="_filterDateTo" @bind:event="oninput" type="date"
+           class="form-control form-control-sm" style="max-width:150px" title="Bitiş tarihi" />
+    <button class="btn btn-sm btn-outline-secondary" @onclick="ApplyDateFilter">Filtrele</button>
+    <button class="btn btn-sm btn-ghost" @onclick="ClearFilters" title="Filtreleri temizle">✕</button>
+
+    <div class="btn-group btn-group-sm ms-auto">
+        @foreach (var s in _pageSizes)
+        {
+            <button class="btn @(_pageSize == s ? "btn-secondary" : "btn-outline-secondary")"
+                    @onclick="() => { _pageSize = s; _pageIndex = 0; _ = LoadAsync(); }">
+                @s
+            </button>
+        }
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger py-2 small">
+        @_error <button class="btn btn-link btn-sm" @onclick="LoadAsync">Tekrar dene</button>
+    </div>
+}
+else
+{
+    <!-- Özet kartlar -->
+    <div class="row g-2 mb-3">
+        <div class="col-auto">
+            <div class="d-flex align-items-center gap-2 px-3 py-2 rounded" style="background:var(--surface-2);border:1px solid var(--border);font-size:12px">
+                <span class="badge bg-success">Create</span>
+                <span>@_items.Count(x => x.Action == "Create") kayıt</span>
+            </div>
+        </div>
+        <div class="col-auto">
+            <div class="d-flex align-items-center gap-2 px-3 py-2 rounded" style="background:var(--surface-2);border:1px solid var(--border);font-size:12px">
+                <span class="badge bg-primary">Update</span>
+                <span>@_items.Count(x => x.Action == "Update") kayıt</span>
+            </div>
+        </div>
+        <div class="col-auto">
+            <div class="d-flex align-items-center gap-2 px-3 py-2 rounded" style="background:var(--surface-2);border:1px solid var(--border);font-size:12px">
+                <span class="badge bg-danger">Delete</span>
+                <span>@_items.Count(x => x.Action == "Delete") kayıt</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="cms-table-wrap">
+        <table class="cms-table">
+            <thead>
+                <tr>
+                    <th><div class="th-inner">Kullanıcı</div></th>
+                    <th><div class="th-inner">Eylem</div></th>
+                    <th><div class="th-inner">Entity</div></th>
+                    <th><div class="th-inner">Detay</div></th>
+                    <th><div class="th-inner">IP</div></th>
+                    <th><div class="th-inner">Tarih</div></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var log in _items)
+                {
+                    <tr @onclick="() => ToggleDetail(log.Id)" style="cursor:pointer"
+                        class="@(_expandedId == log.Id ? "selected" : "")">
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="avatar avatar-sm" style="background:@AvatarColor(log.UserEmail);color:#fff;flex-shrink:0;font-size:10px">
+                                    @log.UserEmail[0].ToString().ToUpper()
+                                </div>
+                                <div style="font-size:12px;font-weight:500">@log.UserEmail</div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge @ActionBadge(log.Action)">@log.Action</span>
+                        </td>
+                        <td>
+                            <div style="font-size:12px;font-weight:500">@log.EntityType</div>
+                            @if (log.EntityId is not null)
+                            {
+                                <div class="mono" style="font-size:10px;color:var(--text-3)">
+                                    @(log.EntityId.Length > 8 ? log.EntityId[..8] + "…" : log.EntityId)
+                                </div>
+                            }
+                        </td>
+                        <td style="max-width:260px">
+                            @if (_expandedId == log.Id && log.Details is not null)
+                            {
+                                <pre style="font-size:10px;margin:0;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:var(--surface-2);padding:6px;border-radius:4px">@log.Details</pre>
+                            }
+                            else if (log.Details is not null)
+                            {
+                                <small class="text-muted" style="font-size:11px">
+                                    @(log.Details.Length > 80 ? log.Details[..80] + "…" : log.Details)
+                                </small>
+                            }
+                            else
+                            {
+                                <span style="color:var(--text-4)">—</span>
+                            }
+                        </td>
+                        <td><small class="mono text-muted" style="font-size:10px">@log.IpAddress</small></td>
+                        <td>
+                            <small class="mono" style="font-size:11px">@log.CreatedAt.ToString("dd.MM.yy HH:mm:ss")</small>
+                        </td>
+                    </tr>
+                }
+                @if (!_items.Any())
+                {
+                    <tr><td colspan="6" class="text-center text-muted py-5">Kayıt bulunamadı</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Sayfalama -->
+    <div class="d-flex align-items-center justify-content-between mt-3 flex-wrap gap-2">
+        <small class="text-muted">
+            Toplam <strong>@_totalCount</strong> kayıt · Sayfa <strong>@(_pageIndex + 1)</strong> / <strong>@_totalPages</strong>
+        </small>
+        @if (_totalPages > 1)
+        {
+            <div class="d-flex gap-1">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => GoPage(0)" disabled="@(!_hasPrev)">«</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="PrevPage" disabled="@(!_hasPrev)">‹ Önceki</button>
+                @for (int p = Math.Max(0, _pageIndex - 2); p < Math.Min(_totalPages, _pageIndex + 3); p++)
+                {
+                    var pg = p;
+                    <button class="btn btn-sm @(pg == _pageIndex ? "btn-secondary" : "btn-outline-secondary")"
+                            @onclick="() => GoPage(pg)">
+                        @(pg + 1)
+                    </button>
+                }
+                <button class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(!_hasNext)">Sonraki ›</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => GoPage(_totalPages - 1)" disabled="@(!_hasNext)">»</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    List<AuditLogDto> _items = [];
+    bool _loading;
+    string? _error;
+    string _search = "";
+
+    string? _filterEntityType, _filterAction, _filterEmail;
+    DateOnly? _filterDateFrom, _filterDateTo;
+    int _pageIndex, _pageSize = 50, _totalPages, _totalCount;
+    bool _hasPrev, _hasNext;
+    readonly int[] _pageSizes = [25, 50, 100];
+    Guid? _expandedId;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        _loading = true; _error = null; StateHasChanged();
+        // userId filtresi e-posta üzerinden yapılamıyor, API userId kabul ediyor
+        var r = await AuditApiClient.GetAuditLogsAsync(_pageIndex, _pageSize, _filterEntityType, _filterAction);
+        if (r.IsSuccess && r.Data is not null)
+        {
+            var items = r.Data.Items ?? [];
+            // Client-side e-posta filtresi
+            if (!string.IsNullOrWhiteSpace(_filterEmail))
+                items = items.Where(x => x.UserEmail.Contains(_filterEmail, StringComparison.OrdinalIgnoreCase)).ToList();
+            _items = items;
+            _totalPages = r.Data.Pages;
+            _totalCount = r.Data.Count;
+            _hasPrev = r.Data.HasPrevious;
+            _hasNext = r.Data.HasNext;
+        }
+        else _error = r.Error?.Message ?? "Audit loglar yüklenemedi.";
+        _loading = false;
+        StateHasChanged();
+    }
+
+    System.Timers.Timer? _debounce;
+    void OnFilterChanged()
+    {
+        _debounce?.Dispose();
+        _debounce = new(400);
+        _debounce.Elapsed += async (_, _) =>
+        {
+            _debounce?.Dispose();
+            _pageIndex = 0;
+            await InvokeAsync(LoadAsync);
+        };
+        _debounce.AutoReset = false;
+        _debounce.Start();
+    }
+
+    async Task ApplyDateFilter() { _pageIndex = 0; await LoadAsync(); }
+
+    void ClearFilters()
+    {
+        _filterEntityType = null;
+        _filterAction = null;
+        _filterEmail = null;
+        _filterDateFrom = null;
+        _filterDateTo = null;
+        _pageIndex = 0;
+        _ = LoadAsync();
+    }
+
+    async Task PrevPage() { if (_hasPrev) { _pageIndex--; await LoadAsync(); } }
+    async Task NextPage() { if (_hasNext) { _pageIndex++; await LoadAsync(); } }
+    async Task GoPage(int p) { _pageIndex = p; await LoadAsync(); }
+
+    void ToggleDetail(Guid id) => _expandedId = _expandedId == id ? null : id;
+
+    static string ActionBadge(string action) => action switch
+    {
+        "Create" => "bg-success",
+        "Update" => "bg-primary",
+        "Delete" => "bg-danger",
+        "Publish" => "bg-warning text-dark",
+        "Archive" => "bg-secondary",
+        "Restore" => "bg-info text-dark",
+        "Login" => "bg-success",
+        "Logout" => "bg-secondary",
+        _ => "bg-secondary"
+    };
+
+    static string AvatarColor(string e)
+    {
+        string[] p = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#0ea5e9"];
+        return p[Math.Abs(e.GetHashCode()) % p.Length];
+    }
+
+    public void Dispose() => _debounce?.Dispose();
+}

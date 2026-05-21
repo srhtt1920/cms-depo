@@ -1,0 +1,947 @@
+﻿@page "/contents/{Id:guid}/edit"
+@attribute [Authorize]
+@layout DashBoardLayout
+@implements IDisposable
+
+<PageTitle>İçerik Düzenle — CMS</PageTitle>
+@if (!AppState.Session.Can("content.read"))
+{
+    <AccessDenied />
+    return;
+}
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else if (_detail is null)
+{
+    <div class="alert alert-danger">İçerik bulunamadı.</div>
+}
+else
+{
+    <PageHeader Title="@_detail.Slug">
+        <Actions>
+            <button class="btn btn-outline-secondary btn-sm" @onclick='() => Nav.NavigateTo("/contents")'>← Geri</button>
+
+            @if (_completion is not null)
+            {
+                <span class="badge @(_completion.CanPublish ? "bg-success" : "bg-warning text-dark")">
+                    @_completion.OverallScore% Tamamlandı
+                </span>
+            }
+
+            @if (_detail.Status is "Draft" or "Archived" && AppState.Session.Can("content.publish"))
+            {
+                <button class="btn btn-success btn-sm" @onclick="Publish" disabled="@_busy">Yayınla</button>
+            }
+            @if (_detail.Status == "Published" && AppState.Session.Can("content.publish"))
+            {
+                <button class="btn btn-outline-warning btn-sm" @onclick="Unpublish" disabled="@_busy">Yayından Kaldır</button>
+            }
+            @if (_detail.Status != "Archived" && AppState.Session.Can("content.edit"))
+            {
+                <button class="btn btn-outline-secondary btn-sm" @onclick="Archive" disabled="@_busy">Arşivle</button>
+            }
+            @if (AppState.Session.Can("content.create"))
+            {
+                <button class="btn btn-outline-primary btn-sm" @onclick="ShowDuplicateModal" disabled="@_busy">Kopyala</button>
+            }
+            @if (AppState.Session.Can("content.delete"))
+            {
+                <button class="btn btn-outline-danger btn-sm" @onclick="SoftDelete" disabled="@_busy">Sil</button>
+            }
+        </Actions>
+    </PageHeader>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger py-2 small mb-3">@_error</div>
+    }
+    @if (!string.IsNullOrEmpty(_success))
+    {
+        <div class="alert alert-success py-2 small mb-3">@_success</div>
+    }
+
+    <!-- ── Eksik çeviri uyarısı ───────────────────────────────────── -->
+    <MissingTranslationAlert ExistingLanguages="@_detail.Translations.Select(t => t.LanguageCode)"
+                             OnAddTranslation="OpenAddTranslationFor" />
+
+    <!-- Durum şeridi -->
+    <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+        <StatusBadge Status="@_detail.Status" />
+        <span class="text-muted small">Tür: <strong>@_detail.ContentType</strong></span>
+        <span class="text-muted small">
+            Oluşturma: <strong>@_detail.CreatedAt.ToString("dd MMM yyyy HH:mm")</strong>
+        </span>
+        @if (_detail.UpdatedAt.HasValue)
+        {
+            <span class="text-muted small">
+                Güncelleme: <strong>@_detail.UpdatedAt.Value.ToString("dd MMM yyyy HH:mm")</strong>
+            </span>
+        }
+        <!-- Dil kapsam özeti -->
+        @{
+            var existing = _detail.Translations.Select(t => t.LanguageCode).ToList();
+            var missing = LangState.MissingIn(existing);
+            var covered = LangState.SupportedLanguages.Count > 0
+            ? (int)((double)existing.Count / LangState.SupportedLanguages.Count * 100)
+            : 100;
+        }
+        @if (LangState.SupportedLanguages.Count > 0)
+        {
+            <div class="ms-auto d-flex align-items-center gap-2">
+                <div style="height:5px;width:70px;background:var(--surface-2);border-radius:3px;overflow:hidden">
+                    <div style="height:100%;width:@covered%;background:@(missing.Any() ? "#f59e0b" : "#10b981");border-radius:3px;transition:width .4s"></div>
+                </div>
+                <small class="mono" style="color:@(missing.Any() ? "#d97706" : "#065f46")">
+                    @existing.Count/@LangState.SupportedLanguages.Count dil
+                </small>
+            </div>
+        }
+    </div>
+
+    <div class="row g-3">
+        <!-- ── Sol kolon ───────────────────────────────────────────────── -->
+        <div class="col-12 col-xl-4">
+
+            <!-- Tamamlanma skoru -->
+            @if (_completion is not null)
+            {
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-header bg-transparent py-2">
+                        <strong style="font-size:13px">Tamamlanma Skoru</strong>
+                    </div>
+                    <div class="card-body py-2 px-3">
+                        @foreach (var ls in _completion.Languages)
+                        {
+                            var isMissing = LangState.SupportedLanguages.Any() &&
+                            !_detail.Translations.Any(t =>
+                            t.LanguageCode.Equals(ls.Code, StringComparison.OrdinalIgnoreCase));
+                            <div class="mb-2">
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <span class="mono badge @(isMissing ? "bg-warning text-dark" : "bg-light text-dark border")"
+                                          style="font-size:10px;min-width:28px">
+                                        @ls.Code.ToUpper()
+                                    </span>
+                                    <div style="flex:1;height:5px;background:var(--surface-2);border-radius:3px;overflow:hidden">
+                                        <div style="height:100%;width:@(ls.Score)%;background:@CompColor(ls.Score);border-radius:3px;transition:width .3s"></div>
+                                    </div>
+                                    <small class="mono" style="color:@CompColor(ls.Score);min-width:30px">
+                                        @ls.Score%
+                                    </small>
+                                    @if (isMissing)
+                                    {
+                                        <span style="font-size:9px;color:#d97706;cursor:pointer"
+                                              title="Tenant bu dili destekliyor ama içerikte yok"
+                                              @onclick="() => OpenAddTranslationFor(ls.Code)">⚠ Ekle</span>
+                                    }
+                                </div>
+                                @if (ls.MissingFields.Any())
+                                {
+                                    <div class="d-flex flex-wrap gap-1 ms-4">
+                                        @foreach (var f in ls.MissingFields)
+                                        {
+                                            <span class="badge bg-danger" style="font-size:9px">@f</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        <!-- Tenant'ın isteyip içerikte hiç bulunmayan diller -->
+                        @foreach (var lang in missing.Where(l =>
+                                        _completion.Languages.All(ls => !ls.Code.Equals(l, StringComparison.OrdinalIgnoreCase))))
+                        {
+                            <div class="mb-2">
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <span class="mono badge bg-warning text-dark" style="font-size:10px;min-width:28px">
+                                        @lang.ToUpper()
+                                    </span>
+                                    <div style="flex:1;height:5px;background:rgba(239,68,68,.2);border-radius:3px"></div>
+                                    <small class="mono text-danger" style="font-size:10px">0%</small>
+                                    <span style="font-size:9px;color:#d97706;cursor:pointer"
+                                          @onclick="() => OpenAddTranslationFor(lang)">⚠ Ekle</span>
+                                </div>
+                                <small class="ms-4 text-danger mono" style="font-size:10px">↳ Çeviri eksik</small>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Section yapısı -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-2">
+                    <strong style="font-size:13px">Section Yapısı</strong>
+                    @if (AppState.Session.Can("content.edit"))
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="ShowAddSection">+ Section</button>
+                    }
+                </div>
+                <div class="card-body p-2">
+                    @if (_sections?.Sections.Any() == true)
+                    {
+                        @foreach (var sec in _sections.Sections.OrderBy(s => s.Order))
+                        {
+                            <SectionTree Section="sec" ContentId="Id"
+                                         OnChanged="ReloadSectionsAsync"
+                                         CanEdit='AppState.Session.Can("content.edit")' />
+                        }
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center py-3 small">Henüz section yok</p>
+                    }
+                </div>
+            </div>
+
+            <!-- Zamanlama -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-transparent py-2">
+                    <strong style="font-size:13px">Yayın Zamanlaması</strong>
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium">Yayın Tarihi</label>
+                        <input type="datetime-local" class="form-control form-control-sm" @bind="_schedPublishAt" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium">Yayından Kalkma Tarihi</label>
+                        <input type="datetime-local" class="form-control form-control-sm" @bind="_schedUnpublishAt" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium">
+                            Süre (dakika)
+                            <small class="text-muted">— ya da bitiş tarihi kullanın</small>
+                        </label>
+                        <input type="number" class="form-control form-control-sm"
+                               @bind="_schedDuration" placeholder="örn: 20160 (14 gün)" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Zaman Dilimi</label>
+                        <select class="form-select form-select-sm" @bind="_schedTz">
+                            <option value="Europe/Istanbul">Europe/Istanbul (UTC+3)</option>
+                            <option value="UTC">UTC</option>
+                            <option value="Europe/Berlin">Europe/Berlin (UTC+1/2)</option>
+                            <option value="America/New_York">America/New_York (UTC-5/4)</option>
+                        </select>
+                    </div>
+                    @if (_schedPublishAt.HasValue && _schedUnpublishAt.HasValue)
+                    {
+                        <div class="alert alert-info py-1 px-2 small mb-2">
+                            @_schedPublishAt.Value.ToString("dd MMM yyyy HH:mm") →
+                            @_schedUnpublishAt.Value.ToString("dd MMM yyyy HH:mm")
+                        </div>
+                    }
+                    else if (_schedPublishAt.HasValue && _schedDuration.HasValue)
+                    {
+                        <div class="alert alert-info py-1 px-2 small mb-2">
+                            Bitiş: @(_schedPublishAt.Value.AddMinutes(_schedDuration.Value).ToString("dd MMM yyyy HH:mm"))
+                        </div>
+                    }
+                    @if (AppState.Session.Can("content.publish"))
+                    {
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-primary flex-fill" @onclick="SetSchedule" disabled="@_busy">Zamanla</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSchedule" disabled="@_busy">İptal</button>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Versiyon geçmişi -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-2">
+                    <strong style="font-size:13px">Versiyon Geçmişi</strong>
+                    <button class="btn btn-sm btn-ghost" @onclick="ToggleVersions" style="font-size:11px">
+                        @(_showVersions ? "Gizle" : "Göster")
+                    </button>
+                </div>
+                @if (_showVersions)
+                {
+                    <div class="card-body p-0">
+                        @if (_versionsLoading)
+                        {
+                            <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>
+                        }
+                        else if (_versions.Any())
+                        {
+                            <table class="table table-sm mb-0" style="font-size:12px">
+                                <thead>
+                                    <tr>
+                                        <th class="ps-3">Versiyon</th>
+                                        <th>Tarih</th>
+                                        <th>Durum</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var v in _versions)
+                                    {
+                                        <tr>
+                                            <td class="ps-3">
+                                                <span class="badge bg-secondary">v@v.VersionNumber</span>
+                                                @if (v.Label is not null)
+                                                {
+                                                    <small class="ms-1 text-muted">@v.Label</small>
+                                                }
+                                            </td>
+                                            <td><small class="mono">@v.CreatedAt.ToString("dd.MM.yy HH:mm")</small></td>
+                                            <td>
+                                                <span class="badge @(v.IsPublished ? "bg-success" : "bg-secondary")"
+                                                      style="font-size:9px">
+                                                    @(v.IsPublished ? "Yayında" : "Taslak")
+                                                </span>
+                                            </td>
+                                            <td>
+                                                @if (AppState.Session.Can("content.edit"))
+                                                {
+                                                    <button class="btn btn-outline-secondary"
+                                                            style="font-size:10px;padding:1px 6px"
+                                                            @onclick="() => RestoreVersion(v.VersionNumber)">
+                                                        Geri Al
+                                                    </button>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        else
+                        {
+                            <p class="text-muted text-center py-3 small">Versiyon bulunamadı</p>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- ── Sağ kolon: Çeviriler ────────────────────────────────────── -->
+        <div class="col-12 col-xl-8">
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-transparent p-0">
+                    <ul class="nav nav-tabs border-0 px-2 pt-1">
+                        @foreach (var t in _detail.Translations)
+                        {
+                            var langScore = _completion?.Languages
+                            .FirstOrDefault(ls => ls.Code.Equals(t.LanguageCode, StringComparison.OrdinalIgnoreCase));
+                            var score = langScore?.Score ?? -1;
+
+                            <li class="nav-item">
+                                <button class="nav-link @(_activeLang == t.LanguageCode ? "active" : "")"
+                                        style="font-size:12px;padding:10px 14px;position:relative"
+                                        @onclick="() => SwitchLang(t.LanguageCode)">
+
+                                    @t.LanguageCode.ToUpper()
+
+                                    <!-- Tamamlanma renk dot -->
+                                    @if (score >= 0)
+                                    {
+                                        <span style="width:6px;height:6px;border-radius:50%;display:inline-block;
+                                                                 margin-left:4px;vertical-align:middle;
+                                                                 background:@CompColor(score)"
+                                              title="@score% tamamlandı"></span>
+                                    }
+
+                                    <!-- Yayın rozeti -->
+                                    @if (t.IsPublished)
+                                    {
+                                        <span class="badge bg-success ms-1" style="font-size:8px">✓</span>
+                                    }
+
+                                    <!-- Eksik alan uyarısı -->
+                                    @if (langScore?.MissingFields.Any() == true)
+                                    {
+                                        <span class="badge bg-warning text-dark ms-1"
+                                              style="font-size:8px"
+                                              title="Eksik: @string.Join(", ", langScore.MissingFields)">
+                                            !
+                                        </span>
+                                    }
+                                </button>
+                            </li>
+                        }
+
+                        <!-- Tenant'ta olup içerikte olmayan diller — disabled pill -->
+                        @foreach (var lang in LangState.MissingIn(_detail.Translations.Select(t => t.LanguageCode)))
+                        {
+                            var l = lang;
+                            <li class="nav-item d-flex align-items-center">
+                                <button class="nav-link text-warning"
+                                        style="font-size:12px;padding:10px 12px;opacity:.7;border-style:dashed"
+                                        title="Tenant bu dili destekliyor — çeviri eksik"
+                                        @onclick="() => OpenAddTranslationFor(l)">
+                                    <svg width="9" height="9" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                                        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
+                                    </svg>
+                                    @l.ToUpper()
+                                </button>
+                            </li>
+                        }
+
+                        @if (AppState.Session.Can("content.edit"))
+                        {
+                            <li class="nav-item ms-auto d-flex align-items-center pe-1">
+                                <button class="btn btn-ghost btn-sm"
+                                        style="font-size:11px;color:var(--accent)"
+                                        @onclick="() => OpenAddTranslationFor(null)">
+                                    + Çeviri
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                </div>
+
+                @{
+                    var activeTrans = _detail.Translations.FirstOrDefault(t => t.LanguageCode == _activeLang);
+                }
+                @if (activeTrans is not null)
+                {
+                    <div class="card-body">
+                        <!-- Başlık -->
+                        <div class="mb-3">
+                            <label class="form-label small fw-medium">
+                                Başlık
+                                <span class="text-muted" style="font-size:10px">(@_activeLang.ToUpper())</span>
+                            </label>
+                            <input type="text" class="form-control"
+                                   value="@_editTitle"
+                                   @oninput='e => _editTitle = e.Value?.ToString() ?? ""' />
+                            @if (string.IsNullOrWhiteSpace(_editTitle))
+                            {
+                                <div class="form-text text-danger">Başlık boş bırakılamaz.</div>
+                            }
+                        </div>
+
+                        <!-- İçerik -->
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <label class="form-label small fw-medium mb-0">
+                                    İçerik
+                                    <span class="text-muted" style="font-size:10px">(@_activeLang.ToUpper())</span>
+                                </label>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn @(_editorMode == "text" ? "btn-secondary" : "btn-outline-secondary")"
+                                            style="font-size:10px;padding:2px 8px"
+                                            @onclick='() => _editorMode = "text"'>
+                                        Metin
+                                    </button>
+                                    <button class="btn @(_editorMode == "html" ? "btn-secondary" : "btn-outline-secondary")"
+                                            style="font-size:10px;padding:2px 8px"
+                                            @onclick='() => _editorMode = "html"'>
+                                        HTML
+                                    </button>
+                                </div>
+                            </div>
+                            <textarea class="form-control @(_editorMode == "html" ? "font-monospace" : "")"
+                                      rows="10"
+                                      value="@_editBody"
+                                      @oninput='e => _editBody = e.Value?.ToString() ?? ""'></textarea>
+                        </div>
+
+                        <!-- SEO -->
+                        <div class="border-top pt-3 mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2"
+                                 style="cursor:pointer" @onclick="() => _showSeo = !_showSeo">
+                                <small class="fw-medium">
+                                    SEO
+                                    @{
+                                        var langScore2 = _completion?.Languages
+                                        .FirstOrDefault(ls => ls.Code == _activeLang);
+                                        var hasSeoMissing = langScore2?.MissingFields
+                                        .Any(f => f.StartsWith("Meta")) == true;
+                                    }
+                                    @if (hasSeoMissing)
+                                    {
+                                        <span class="badge bg-warning text-dark ms-1" style="font-size:9px">Eksik alan</span>
+                                    }
+                                </small>
+                                <svg width="10" height="10" fill="currentColor" viewBox="0 0 16 16"
+                                     style="transform:@(_showSeo ? "rotate(90deg)" : "");transition:.15s">
+                                    <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z" />
+                                </svg>
+                            </div>
+                            @if (_showSeo)
+                            {
+                                <div class="row g-2">
+                                    <div class="col-12">
+                                        <label class="form-label small">Meta Başlık</label>
+                                        <input type="text" class="form-control form-control-sm"
+                                               value="@_editMetaTitle"
+                                               @oninput="e => _editMetaTitle = e.Value?.ToString()"
+                                               placeholder="Boş = başlık kullanılır" />
+                                        @{
+                                            var mtLen = (_editMetaTitle ?? _editTitle).Length;
+                                        }
+                                        <div class="form-text" style="color:@(mtLen > 60 ? "var(--red)" : mtLen > 50 ? "#d97706" : "var(--green)")">
+                                            @mtLen / 60 karakter
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label small">Meta Açıklama</label>
+                                        <textarea class="form-control form-control-sm" rows="2"
+                                                  value="@_editMetaDesc"
+                                                  @oninput="e => _editMetaDesc = e.Value?.ToString()"
+                                                  placeholder="160 karaktere kadar..."></textarea>
+                                        @if (_editMetaDesc?.Length > 0)
+                                        {
+                                            var mdLen = _editMetaDesc.Length;
+                                            <div class="form-text" style="color:@(mdLen > 160 ? "var(--red)" : mdLen > 140 ? "#d97706" : "var(--green)")">
+                                                @mdLen / 160 karakter
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        @if (AppState.Session.Can("content.edit"))
+                        {
+                            <div class="d-flex gap-2 align-items-center">
+                                <button class="btn btn-primary btn-sm" @onclick="SaveTranslation" disabled="@_busy">
+                                    @if (_busy)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1"></span>
+                                    }
+                                    Kaydet
+                                </button>
+                                @if (!activeTrans.IsPublished && AppState.Session.Can("content.publish"))
+                                {
+                                    <button class="btn btn-outline-success btn-sm" @onclick="Publish" disabled="@_busy">
+                                        Yayınla
+                                    </button>
+                                }
+                                <span class="text-muted small ms-auto">
+                                    Son kayıt: @(_detail.UpdatedAt?.ToString("dd MMM HH:mm") ?? "—")
+                                </span>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="card-body text-center text-muted py-5 small">
+                        Düzenlemek için bir dil sekmesi seçin.
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ── Çeviri Ekle Modalı ──────────────────────────────────────── -->
+@if (_showAddTranslationModal)
+{
+    <div class="modal fade show d-block" style="background:rgba(0,0,0,.45)" @onclick="() => _showAddTranslationModal = false">
+        <div class="modal-dialog modal-md" @onclick:stopPropagation>
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-0 pb-0">
+                    <h6 class="modal-title fw-semibold">Çeviri Ekle</h6>
+                    <button class="btn-ghost btn-icon" @onclick="() => _showAddTranslationModal = false">
+                        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-medium">Dil <span class="text-danger">*</span></label>
+                            <select class="form-select form-select-sm" @bind="_newLangCode">
+                                @{
+                                    var tenantLangs = LangState.SupportedLanguages.Count > 0
+                                    ? LangState.SupportedLanguages
+                                    : (IEnumerable<string>)_allLangs;
+                                }
+                                @foreach (var l in tenantLangs.Where(l =>
+                                                            _detail!.Translations.All(t => !t.LanguageCode.Equals(l, StringComparison.OrdinalIgnoreCase))))
+                                {
+                                    <option value="@l">@l.ToUpper() — @LangName(l)</option>
+                                }
+                                @* Tenant'ın listesinde olmayan ek diller de göster *@
+                                @foreach (var l in _allLangs.Where(l =>
+                                                            !tenantLangs.Contains(l, StringComparer.OrdinalIgnoreCase) &&
+                                                            _detail!.Translations.All(t => !t.LanguageCode.Equals(l, StringComparison.OrdinalIgnoreCase))))
+                                {
+                                    <option value="@l" style="color:var(--text-3)">@l.ToUpper() — @LangName(l) (tenant dışı)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label small fw-medium">Başlık <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm"
+                                   @bind="_newLangTitle" placeholder="Bu dildeki başlık..." />
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">İçerik (opsiyonel)</label>
+                        <textarea class="form-control form-control-sm" rows="4"
+                                  @bind="_newLangBody" placeholder="Başlangıç içeriği..."></textarea>
+                    </div>
+
+                    <!-- Kaynak dilden kopyala -->
+                    @if (_detail!.Translations.Count > 0)
+                    {
+                        <div class="p-2 rounded d-flex align-items-center gap-2"
+                             style="background:var(--surface-2);border:1px solid var(--border)">
+                            <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16" style="color:var(--accent)">
+                                <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z" />
+                                <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3z" />
+                            </svg>
+                            <small class="text-muted">Kaynak dilden kopyala:</small>
+                            @foreach (var t in _detail.Translations)
+                            {
+                                var src = t;
+                                <button class="btn btn-ghost btn-sm" style="font-size:11px"
+                                        @onclick="() => CopyFrom(src)">
+                                    @src.LanguageCode.ToUpper()
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="() => _showAddTranslationModal = false">İptal</button>
+                    <button class="btn btn-primary btn-sm" @onclick="AddTranslation" disabled="@(_busy || string.IsNullOrWhiteSpace(_newLangTitle))">
+                        @if (_busy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Ekle
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ── Kopyala Modalı ─────────────────────────────────────────── -->
+@if (_showDuplicateModal)
+{
+    <div class="modal fade show d-block" style="background:rgba(0,0,0,.45)" @onclick="() => _showDuplicateModal = false">
+        <div class="modal-dialog modal-sm" @onclick:stopPropagation>
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-0 pb-0">
+                    <h6 class="modal-title fw-semibold">İçeriği Kopyala</h6>
+                    <button class="btn-ghost btn-icon" @onclick="() => _showDuplicateModal = false">
+                        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label small fw-medium">Yeni Slug <span class="text-danger">*</span></label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text text-muted">/</span>
+                        <input type="text" class="form-control" @bind="_duplicateSlug" />
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="() => _showDuplicateModal = false">İptal</button>
+                    <button class="btn btn-primary btn-sm" @onclick="Duplicate"
+                            disabled="@(_busy || string.IsNullOrWhiteSpace(_duplicateSlug))">
+                        @if (_busy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Kopyala
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    ContentDetailDto? _detail;
+    ContentWithSectionsDto? _sections;
+    ContentCompletionDto? _completion;
+    List<ContentVersionDto> _versions = [];
+
+    bool _loading = true, _busy, _versionsLoading, _showVersions, _showSeo = true;
+    bool _showDuplicateModal, _showAddTranslationModal;
+
+    string _activeLang = "tr";
+    string _editorMode = "text";
+    string _error = "";
+    string _success = "";
+
+    // Çeviri edit alanları
+    string _editTitle = "";
+    string _editBody = "";
+    string? _editMetaTitle;
+    string? _editMetaDesc;
+
+    // Schedule
+    DateTime? _schedPublishAt, _schedUnpublishAt;
+    int? _schedDuration;
+    string _schedTz = "Europe/Istanbul";
+
+    // Duplicate
+    string _duplicateSlug = "";
+
+    // Add translation
+    string _newLangCode = "en";
+    string _newLangTitle = "";
+    string _newLangBody = "";
+
+    readonly string[] _allLangs = ["tr", "en", "de", "es", "fr", "ar", "ru", "zh", "ja"];
+
+    // ── Lifecycle ─────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        LangState.OnChanged += OnTenantLangsChanged;
+        await LangState.EnsureLoadedAsync();
+        await ReloadAsync();
+    }
+
+    void OnTenantLangsChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => LangState.OnChanged -= OnTenantLangsChanged;
+
+    // ── Data loading ──────────────────────────────────────────────
+
+    async Task ReloadAsync()
+    {
+        _loading = true; _error = ""; _success = "";
+
+        var detailRes = await ContentApiClient.GetContentByIdAsync(Id);
+        if (detailRes.IsSuccess && detailRes.Data is not null)
+        {
+            _detail = detailRes.Data;
+            if (!_detail.Translations.Any(t => t.LanguageCode == _activeLang))
+                _activeLang = _detail.Translations.FirstOrDefault()?.LanguageCode ?? "tr";
+            SyncEditFields();
+
+            if (_detail.Schedule is { } sc)
+            {
+                _schedPublishAt = sc.PublishAt;
+                _schedUnpublishAt = sc.UnpublishAt;
+                _schedDuration = sc.DurationMinutes;
+                _schedTz = sc.TimeZoneId ?? "Europe/Istanbul";
+            }
+        }
+        else _error = detailRes.Error?.Message ?? "İçerik yüklenemedi.";
+
+        await ReloadSectionsAsync();
+        var compRes = await ContentApiClient.GetCompletionAsync(Id);
+        if (compRes.IsSuccess) _completion = compRes.Data;
+
+        _loading = false;
+    }
+
+    async Task ReloadSectionsAsync()
+    {
+        var r = await ContentApiClient.GetContentWithSectionsAsync(Id);
+        if (r.IsSuccess) _sections = r.Data;
+        StateHasChanged();
+    }
+
+    // ── Edit field sync ───────────────────────────────────────────
+
+    void SwitchLang(string lang) { _activeLang = lang; SyncEditFields(); }
+
+    void SyncEditFields()
+    {
+        var t = _detail?.Translations.FirstOrDefault(x => x.LanguageCode == _activeLang);
+        _editTitle = t?.Title ?? "";
+        _editBody = t?.Body ?? "";
+        _editMetaTitle = t?.MetaTitle;
+        _editMetaDesc = t?.MetaDescription;
+    }
+
+    // ── Save translation ──────────────────────────────────────────
+
+    async Task SaveTranslation()
+    {
+        if (string.IsNullOrWhiteSpace(_editTitle)) { _error = "Başlık boş olamaz."; return; }
+        _busy = true; _error = ""; _success = "";
+
+        var exists = _detail!.Translations.Any(t => t.LanguageCode == _activeLang);
+        ApiResult<bool> r = exists
+            ? await ContentApiClient.UpdateContentAsync(Id, new UpdateContentApiRequest(
+                  _activeLang, _editTitle, _editBody, _editMetaTitle, _editMetaDesc))
+            : await ContentApiClient.AddTranslationAsync(Id, new AddTranslationApiRequest(
+                  _activeLang, _editTitle, _editBody, _editMetaTitle, _editMetaDesc));
+
+        if (r.IsSuccess) { _success = "Kaydedildi."; await ReloadAsync(); }
+        else Toast.Error(r.Error?.Message ?? "Kayıt başarısız.");
+        _busy = false;
+    }
+
+    // ── Status actions ────────────────────────────────────────────
+
+    async Task Publish()
+    {
+        _busy = true; _error = ""; _success = "";
+        var r = await ContentApiClient.PublishContentAsync(Id);
+        if (r.IsSuccess) { _success = "Yayınlandı."; await ReloadAsync(); }
+        else _error = r.Error?.Message ?? "";
+        _busy = false;
+    }
+
+    async Task Unpublish()
+    {
+        _busy = true; _error = ""; _success = "";
+        var r = await ContentApiClient.UnpublishContentAsync(Id);
+        if (r.IsSuccess) { _success = "Yayından kaldırıldı."; await ReloadAsync(); }
+        else _error = r.Error?.Message ?? "";
+        _busy = false;
+    }
+
+    async Task Archive()
+    {
+        _busy = true; _error = ""; _success = "";
+        var r = await ContentApiClient.ArchiveContentAsync(Id);
+        if (r.IsSuccess) { _success = "Arşivlendi."; await ReloadAsync(); }
+        else _error = r.Error?.Message ?? "";
+        _busy = false;
+    }
+
+    async Task SoftDelete()
+    {
+        _busy = true; _error = "";
+        var r = await ContentApiClient.SoftDeleteContentAsync(Id);
+        if (r.IsSuccess) Nav.NavigateTo("/contents");
+        else { Toast.Error(r.Error?.Message ?? "Silinemedi."); _busy = false; }
+    }
+
+    // ── Schedule ──────────────────────────────────────────────────
+
+    async Task SetSchedule()
+    {
+        _busy = true; _error = ""; _success = "";
+        var r = await ContentApiClient.SetScheduleAsync(Id, new SetScheduleRequest(
+            _schedPublishAt, _schedUnpublishAt, _schedDuration, _schedTz));
+        if (r.IsSuccess) { _success = "Zamanlama ayarlandı."; await ReloadAsync(); }
+        else _error = r.Error?.Message ?? "";
+        _busy = false;
+    }
+
+    async Task ClearSchedule()
+    {
+        _busy = true;
+        await ContentApiClient.ClearScheduleAsync(Id);
+        _schedPublishAt = null; _schedUnpublishAt = null; _schedDuration = null;
+        _busy = false;
+        await ReloadAsync();
+    }
+
+    // ── Versions ──────────────────────────────────────────────────
+
+    async Task ToggleVersions()
+    {
+        _showVersions = !_showVersions;
+        if (_showVersions && !_versions.Any())
+        {
+            _versionsLoading = true;
+            var r = await ContentApiClient.GetVersionsAsync(Id);
+            if (r.IsSuccess && r.Data is not null) _versions = r.Data;
+            _versionsLoading = false;
+        }
+    }
+
+    async Task RestoreVersion(int versionNumber)
+    {
+        _busy = true; _error = "";
+        var r = await ContentApiClient.RestoreVersionAsync(Id, versionNumber);
+        if (r.IsSuccess) { _versions = []; await ReloadAsync(); }
+        else _error = r.Error?.Message ?? "";
+        _busy = false;
+    }
+
+    // ── Duplicate ─────────────────────────────────────────────────
+
+    void ShowDuplicateModal()
+    {
+        _duplicateSlug = _detail?.Slug + "-kopya";
+        _showDuplicateModal = true;
+    }
+
+    async Task Duplicate()
+    {
+        if (string.IsNullOrWhiteSpace(_duplicateSlug)) return;
+        _busy = true; _error = "";
+        var r = await ContentApiClient.DuplicateContentAsync(Id, _duplicateSlug);
+        if (r.IsSuccess && r.Data is not null)
+        {
+            _showDuplicateModal = false;
+            Nav.NavigateTo($"/contents/{r.Data.Id}/edit");
+        }
+        else { Toast.Error(r.Error?.Message ?? "Kopyalama başarısız."); _busy = false; }
+    }
+
+    // ── Add translation ───────────────────────────────────────────
+
+    void ShowAddSection() => Nav.NavigateTo($"/contents/{Id}/sections/add");
+
+    /// Banner veya sekme "Ekle" butonundan — lang null ise ilk boş dili seçer
+    void OpenAddTranslationFor(string? lang)
+    {
+        _newLangBody = "";
+        _newLangTitle = "";
+        if (lang is not null &&
+            _detail!.Translations.All(t => !t.LanguageCode.Equals(lang, StringComparison.OrdinalIgnoreCase)))
+        {
+            _newLangCode = lang;
+        }
+        else
+        {
+            // Tenant listesinden ilk eksik dili seç
+            var first = LangState.MissingIn(_detail!.Translations.Select(t => t.LanguageCode))
+                .FirstOrDefault()
+                ?? _allLangs.FirstOrDefault(l =>
+                    _detail.Translations.All(t => !t.LanguageCode.Equals(l, StringComparison.OrdinalIgnoreCase)))
+                ?? "en";
+            _newLangCode = first;
+        }
+        _showAddTranslationModal = true;
+    }
+
+    void CopyFrom(ContentDetailTranslationDto src)
+    {
+        _newLangTitle = src.Title;
+        _newLangBody = src.Body ?? "";
+    }
+
+    async Task AddTranslation()
+    {
+        if (string.IsNullOrWhiteSpace(_newLangTitle)) return;
+        _busy = true;
+        var r = await ContentApiClient.AddTranslationAsync(Id,
+            new AddTranslationApiRequest(_newLangCode, _newLangTitle, _newLangBody, null, null));
+        if (r.IsSuccess)
+        {
+            _showAddTranslationModal = false;
+            _activeLang = _newLangCode;
+            await ReloadAsync();
+        }
+        else _error = r.Error?.Message ?? "";
+        _busy = false;
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────
+
+    static string CompColor(int p) => p >= 80 ? "#1f7a45" : p >= 40 ? "#c47a00" : "#c0392b";
+
+    static string LangName(string code) => code.ToLower() switch
+    {
+        "tr" => "Türkçe",
+        "en" => "English",
+        "de" => "Deutsch",
+        "es" => "Español",
+        "fr" => "Français",
+        "ar" => "العربية",
+        "ru" => "Русский",
+        "zh" => "中文",
+        "ja" => "日本語",
+        _ => code.ToUpper()
+    };
+}

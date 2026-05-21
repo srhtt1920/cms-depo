@@ -1,0 +1,72 @@
+@page "/login"
+@layout LoginLayout
+@attribute [AllowAnonymous]
+
+<PageTitle>Giriş — CMS Management</PageTitle>
+
+<EditForm Model="model" OnValidSubmit="Handle">
+    <DataAnnotationsValidator />
+
+    <div class="mb-3">
+        <label class="form-label fw-medium small">E-posta</label>
+        <InputText @bind-Value="model.Email" class="form-control form-control-sm"
+                   placeholder="admin@ornek.com" autocomplete="email" disabled="@busy" />
+        <ValidationMessage For="() => model.Email" class="text-danger small" />
+    </div>
+
+    <div class="mb-4">
+        <label class="form-label fw-medium small">Şifre</label>
+        <InputText @bind-Value="model.Password" class="form-control form-control-sm"
+                   type="password" placeholder="••••••••" disabled="@busy" />
+        <ValidationMessage For="() => model.Password" class="text-danger small" />
+    </div>
+
+    @if (err is not null)
+    {
+        <div class="alert alert-danger py-2 small mb-3">@err</div>
+    }
+
+    <button type="submit" class="btn btn-primary btn-sm w-100" disabled="@busy">
+        @if (busy)
+        {
+            <span class="spinner-border spinner-border-sm me-2"></span>
+        }
+        Giriş Yap
+    </button>
+</EditForm>
+
+@code {
+    private Model model = new();
+    private bool busy;
+    private string? err;
+
+    protected override void OnInitialized()
+    {
+        if (AppState.Session.IsAuthenticated)
+            Nav.NavigateTo(AppState.Session.HasTenant ? "/" : "/select-tenant");
+    }
+
+    private async Task Handle()
+    {
+        busy = true; err = null;
+        var (ok, error, needsSelect, needsTwoFactor) = await Auth.LoginAsync(model.Email, model.Password);
+        if (!ok) { err = error; busy = false; return; }
+        if (needsTwoFactor)
+        {
+            Nav.NavigateTo("/two-factor", forceLoad: false);
+            return;
+        }
+        Nav.NavigateTo(needsSelect ? "/select-tenant" : "/", forceLoad: false);
+    }
+
+    sealed class Model
+    {
+        [Required(ErrorMessage = "E-posta zorunlu")]
+        [EmailAddress(ErrorMessage = "Geçerli e-posta girin")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Şifre zorunlu")]
+        [MinLength(3, ErrorMessage = "En az 3 karakter")]
+        public string Password { get; set; } = string.Empty;
+    }
+}

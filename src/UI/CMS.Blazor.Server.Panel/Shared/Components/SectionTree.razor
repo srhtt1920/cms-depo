@@ -1,0 +1,90 @@
+﻿<div class="border rounded-2 mb-2 overflow-hidden">
+    <!-- Header -->
+    <div class="d-flex align-items-center gap-2 px-2 py-2"
+         style="background:var(--surface-1);cursor:pointer"
+         @onclick="() => _open = !_open">
+        <svg width="12" height="12" fill="currentColor" class="text-3" viewBox="0 0 16 16">
+            <path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z" />
+        </svg>
+        <span style="font-size:13px;font-weight:500;flex:1">@Section.Name</span>
+        <span class="badge bg-secondary" style="font-size:9px">@Section.Blocks.Count blok</span>
+        @if (!Section.IsVisible)
+        {
+            <span class="badge bg-warning text-dark" style="font-size:9px">Gizli</span>
+        }
+        @if (CanEdit)
+        {
+            <button class="btn-ghost btn-icon" @onclick:stopPropagation
+                    @onclick="() => DeleteSection()">
+                <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z" />
+                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1z" />
+                </svg>
+            </button>
+        }
+        <span style="font-size:10px">@(_open ? "▲" : "▼")</span>
+    </div>
+
+    <!-- Blocks -->
+    @if (_open)
+    {
+        <div class="p-2" style="background:var(--surface-0)">
+            @foreach (var block in Section.Blocks.OrderBy(b => b.Order))
+            {
+                <div class="d-flex align-items-center gap-2 px-2 py-1 rounded mb-1"
+                     style="background:var(--surface-1);font-size:12px">
+                    <span class="badge @BlockColor(block.BlockType)" style="font-size:9px;min-width:44px">@block.BlockType</span>
+                    <span style="flex:1">Block @block.Order</span>
+                    <div class="d-flex gap-1">
+                        @foreach (var l in new[] { "tr", "en", "de", "es" })
+                        {
+                            var hasT = block.Translations.Any(t => t.LanguageCode == l);
+                            <span class="badge @(hasT ? "bg-success" : "bg-danger")" style="font-size:9px">@l</span>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (CanEdit)
+            {
+                <button class="btn btn-sm btn-outline-secondary w-100 mt-1"
+                        @onclick="AddBlock" style="font-size:11px">
+                    + Block Ekle
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SectionDto Section { get; set; } = default!;
+    [Parameter, EditorRequired] public Guid ContentId { get; set; }
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    bool _open;
+
+    async Task DeleteSection()
+    {
+        var r = await ContentApiClient.DeleteSectionAsync(ContentId, Section.Id);
+        if (r.IsSuccess) await OnChanged.InvokeAsync();
+    }
+
+    async Task AddBlock()
+    {
+        var r = await ContentApiClient.UpsertBlockAsync(ContentId, Section.Id,
+            new UpsertBlockRequest(BlockType: 1, Order: Section.Blocks.Count + 1,
+                IsVisible: true, Settings: "{}"));
+        if (r.IsSuccess) await OnChanged.InvokeAsync();
+    }
+
+    static string BlockColor(string t) => t switch
+    {
+        "Text" => "bg-primary",
+        "Image" => "bg-success",
+        "Slider" => "bg-info text-dark",
+        "Card" => "bg-warning text-dark",
+        "Action" => "bg-danger",
+        _ => "bg-secondary",
+    };
+}

@@ -1,0 +1,113 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+
+<div class="cms-root"
+     data-bs-theme="@AppState.Preferences.Theme"
+     data-menu-theme="@AppState.Preferences.MenuTheme"
+     data-size-mode="@AppState.Preferences.SizeMode">
+
+    <AuthorizeView>
+        <Authorized>
+            @if (!AppState.Session.HasTenant)
+            {
+                <RedirectToTenantSelect />
+            }
+            else
+            {
+                <div class="cms-shell">
+                    <!-- ── Sidebar ────────────────────────────────── -->
+                    <nav class="cms-sidebar">
+
+                        <!-- Marka başlığı -->
+                        <div class="cms-sidebar-header">
+                            <button class="btn-ghost btn-icon" @onclick="ToggleSidebar">
+                                <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                                    <path fill-rule="evenodd" d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5z" />
+                                </svg>
+                            </button>
+                            <span class="cms-sidebar-brand">CMS Management</span>
+                        </div>
+
+                        <!-- Arama -->
+                        <div class="cms-sidebar-search">
+                            <div class="cms-sidebar-search-wrap">
+                                <svg class="cms-sidebar-search-icon" width="13" height="13"
+                                     fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" />
+                                </svg>
+                                <input @bind="_navFilter" @bind:event="oninput"
+                                       type="text" placeholder="Filter..." />
+                            </div>
+                        </div>
+
+                        <!-- Nav -->
+                        <div class="cms-nav">
+                            <SideNav Filter="@_navFilter" />
+                        </div>
+
+                        <!-- Footer -->
+                        <div class="cms-sidebar-footer">
+                            <SidebarUser />
+                        </div>
+                    </nav>
+
+                    <!-- ── Ana alan ─────────────────────────────────── -->
+                    <div class="cms-main">
+                        <!-- Topbar -->
+                        <header class="cms-topbar">
+                            <!-- Sol -->
+                            <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                                <span class="text-3" style="font-size:13px;font-weight:600">
+                                    @AppState.Session.CurrentTenantName
+                                </span>
+                            </div>
+
+                            <!-- Arama -->
+                            <div class="cms-topbar-search">
+                                <svg class="cms-topbar-search-icon" width="13" height="13"
+                                     fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" />
+                                </svg>
+                                <input type="text" placeholder="Search" @bind="_globalSearch" />
+                            </div>
+
+                            <!-- Sağ araçlar -->
+                            <div class="d-flex align-items-center gap-1 flex-shrink-0 ms-auto">
+                                <TopbarTools />
+                            </div>
+                        </header>
+
+                        <!-- İçerik -->
+                        <div class="cms-content">
+                            <div class="cms-content-inner">
+                                @Body
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </Authorized>
+        <NotAuthorized>
+            <RedirectToLogin />
+        </NotAuthorized>
+    </AuthorizeView>
+</div>
+
+@code {
+    string _navFilter = "";
+    string _globalSearch = "";
+
+    void ToggleSidebar() { /* TODO: collapse */ }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await PermSync.SyncIfNeededAsync();
+    }
+
+    protected override void OnInitialized() =>
+        AppState.AuthProvider.AuthenticationStateChanged += OnAuth;
+
+    void OnAuth(Task<AuthenticationState> _) => InvokeAsync(StateHasChanged);
+    public void Dispose() => AppState.AuthProvider.AuthenticationStateChanged -= OnAuth;
+}

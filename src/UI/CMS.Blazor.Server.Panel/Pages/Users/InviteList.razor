@@ -1,0 +1,305 @@
+@page "/users/invites"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Davetler — CMS</PageTitle>
+@if (!AppState.Session.Can("users.manage"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="Davet Yönetimi" Subtitle="Bekleyen ve geçmiş davetler">
+    <Actions>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-2"
+                @onclick="() => _showInvite = true">
+            ✉️ Yeni Davet
+        </button>
+        <a href="/users" class="btn btn-ghost btn-sm">← Kullanıcılara Dön</a>
+    </Actions>
+</PageHeader>
+
+<!-- KPI Satırı -->
+<div class="row g-2 mb-4">
+    @foreach (var (label, count, color, icon) in new[]{
+        ("Bekleyen",    _counts.Pending,   "#f59e0b", "⏳"),
+        ("Kabul Edilen",_counts.Accepted,  "#22c55e", "✅"),
+        ("Reddedilen",  _counts.Rejected,  "#ef4444", "❌"),
+        ("Süresi Dolan",_counts.Expired,   "#6b7280", "🕐"),
+        })
+    {
+        <div class="col-6 col-md-3">
+            <div class="ap-kpi" style="border-left-color:@color">
+                <div class="d-flex align-items-center gap-2">
+                    <span style="font-size:1.1rem">@icon</span>
+                    <div class="ap-kpi-val">@count</div>
+                </div>
+                <div class="ap-kpi-label">@label</div>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Filtre -->
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <div class="btn-group btn-group-sm">
+        @foreach (var f in new[] { "Tümü", "Bekleyen", "Kabul Edilen", "Reddedilen", "Süresi Dolan", "İptal" })
+        {
+            var filter = f;
+            <button class="btn @(_filter == filter ? "btn-primary" : "btn-outline-secondary")"
+                    style="font-size:11px" @onclick="() => _filter = filter">
+                @filter
+            </button>
+        }
+    </div>
+    <div style="position:relative;max-width:220px;flex:1">
+        <input @bind="_search" @bind:event="oninput"
+               type="text" class="form-control form-control-sm"
+               style="padding-left:28px" placeholder="E-posta ara..." />
+        <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%)" width="12" height="12"
+             fill="currentColor" viewBox="0 0 16 16">
+            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" />
+        </svg>
+    </div>
+    <button class="btn-ghost btn-icon" @onclick="LoadAsync" title="Yenile">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+            <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+            <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+        </svg>
+    </button>
+    <span class="text-muted small ms-auto">@Filtered.Count sonuç</span>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger py-2 small">
+        @_error <button class="btn btn-link btn-sm" @onclick="LoadAsync">Tekrar dene</button>
+    </div>
+}
+else if (!Filtered.Any())
+{
+    <div class="text-center p-5 text-muted">
+        <div style="font-size:3rem;margin-bottom:12px">✉️</div>
+        <div class="fw-medium">Davet bulunamadı</div>
+        <div class="small">Filtre değiştirin veya yeni davet oluşturun.</div>
+    </div>
+}
+else
+{
+    <div class="cms-table-wrap">
+        <table class="cms-table">
+            <thead>
+                <tr>
+                    <th><div class="th-inner">E-posta</div></th>
+                    <th><div class="th-inner">Roller</div></th>
+                    <th><div class="th-inner">Durum</div></th>
+                    <th><div class="th-inner">Gönderilme</div></th>
+                    <th><div class="th-inner">Son Geçerlilik</div></th>
+                    <th><div class="th-inner">Davet Eden</div></th>
+                    <th style="width:120px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var inv in Filtered)
+                {
+                    var i = inv;
+                    var expired = i.Status == InviteStatus.Pending && i.ExpiresAt < DateTime.UtcNow;
+                    <tr class="@(expired ? "table-warning" : "")">
+                        <td>
+                            <div class="fw-medium" style="font-size:13px">@i.DisplayName ?? @i.Email</div>
+                            @if (i.DisplayName is not null)
+                            {
+                                <div class="text-muted" style="font-size:10px">@i.Email</div>
+                            }
+                        </td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach (var r in i.Roles)
+                                {
+                                    <span class="badge bg-light text-dark" style="font-size:9px">@r</span>
+                                }
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge @StatusBadge(i.Status, expired)">
+                                @(expired ? "Süresi Doldu" : StatusLabel(i.Status))
+                            </span>
+                        </td>
+                        <td>
+                            <span class="small text-muted">@i.SentAt.ToLocalTime().ToString("dd MMM HH:mm")</span>
+                        </td>
+                        <td>
+                            <span class="small @(expired ? "text-danger" : "text-muted")">
+                                @i.ExpiresAt.ToLocalTime().ToString("dd MMM HH:mm")
+                            </span>
+                        </td>
+                        <td>
+                            <span class="small text-muted">@i.InvitedByEmail</span>
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1 justify-content-end">
+                                @if (i.Status == InviteStatus.Pending)
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary"
+                                            style="font-size:10px" title="Tekrar gönder"
+                                            @onclick="() => ResendAsync(i.Id)"
+                                            disabled="@(_busy == i.Id)">
+                                        @if (_busy == i.Id)
+                                        {
+                                            <span class="spinner-border spinner-border-sm"></span>
+                                        }
+                                        else
+                                        {
+
+                                            <span>🔁</span>
+                                        }
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger"
+                                            style="font-size:10px" title="İptal et"
+                                            @onclick="() => CancelAsync(i.Id)"
+                                            disabled="@(_busy == i.Id)">
+                                        ✕
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<InviteUserModal Show="_showInvite"
+                 OnClose="EventCallback.Factory.Create(this, ()=>_showInvite=false)"
+                 OnSent="EventCallback.Factory.Create<string>(this, async _ => await LoadAsync())" />
+
+@code {
+    List<InviteDto> _invites = [];
+    string _filter = "Tümü", _search = "";
+    bool _loading = true;
+    Guid? _busy;
+    bool _showInvite;
+    string? _error;
+
+    record Counts(int Pending, int Accepted, int Rejected, int Expired);
+    Counts _counts = new(0, 0, 0, 0);
+
+    List<InviteDto> Filtered
+    {
+        get
+        {
+            var q = _invites.AsEnumerable();
+            if (_filter != "Tümü")
+            {
+                q = _filter switch
+                {
+                    "Bekleyen" => q.Where(i => i.Status == InviteStatus.Pending && i.ExpiresAt >= DateTime.UtcNow),
+                    "Süresi Dolan" => q.Where(i => i.Status == InviteStatus.Pending && i.ExpiresAt < DateTime.UtcNow),
+                    "Kabul Edilen" => q.Where(i => i.Status == InviteStatus.Accepted),
+                    "Reddedilen" => q.Where(i => i.Status == InviteStatus.Rejected),
+                    "İptal" => q.Where(i => i.Status == InviteStatus.Cancelled),
+                    _ => q
+                };
+            }
+            if (!string.IsNullOrWhiteSpace(_search))
+                q = q.Where(i => i.Email.Contains(_search, StringComparison.OrdinalIgnoreCase));
+            return q.OrderByDescending(i => i.SentAt).ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        _loading = true; _error = null;
+        StateHasChanged();
+        try
+        {
+            var r = await InviteApiClient.GetInvitesAsync();
+            if (!r.IsSuccess) { _error = r.Error!.Message; return; }
+            _invites = r.Data ?? [];
+            _counts = new(
+                _invites.Count(i => i.Status == InviteStatus.Pending && i.ExpiresAt >= DateTime.UtcNow),
+                _invites.Count(i => i.Status == InviteStatus.Accepted),
+                _invites.Count(i => i.Status == InviteStatus.Rejected),
+                _invites.Count(i => i.Status == InviteStatus.Pending && i.ExpiresAt < DateTime.UtcNow));
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    async Task ResendAsync(Guid id)
+    {
+        _busy = id;
+        try
+        {
+            var r = await InviteApiClient.ResendInviteAsync(id);
+            if (r.IsSuccess) { Toast.Success("Davet tekrar gönderildi."); await LoadAsync(); }
+            else Toast.Error(r.Error?.Message ?? "Gönderilemedi.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _busy = null; }
+    }
+
+    async Task CancelAsync(Guid id)
+    {
+        _busy = id;
+        try
+        {
+            var r = await InviteApiClient.CancelInviteAsync(id);
+            if (r.IsSuccess) { Toast.Warning("Davet iptal edildi."); await LoadAsync(); }
+            else Toast.Error(r.Error?.Message ?? "İptal edilemedi.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _busy = null; }
+    }
+
+    static string StatusBadge(InviteStatus s, bool expired) => (s, expired) switch
+    {
+        (_, true) => "bg-warning text-dark",
+        (InviteStatus.Pending, false) => "bg-info text-dark",
+        (InviteStatus.Accepted, _) => "bg-success",
+        (InviteStatus.Rejected, _) => "bg-danger",
+        (InviteStatus.Cancelled, _) => "bg-secondary",
+        _ => "bg-light text-dark",
+    };
+
+    static string StatusLabel(InviteStatus s) => s switch
+    {
+        InviteStatus.Pending => "Bekliyor",
+        InviteStatus.Accepted => "Kabul Edildi",
+        InviteStatus.Rejected => "Reddedildi",
+        InviteStatus.Cancelled => "İptal",
+        InviteStatus.Expired => "Süresi Doldu",
+        _ => s.ToString()
+    };
+}

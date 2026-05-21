@@ -1,0 +1,47 @@
+﻿<div class="data-table-wrap">
+    @if (Loading)
+    {
+        <div class="data-table-loading">
+            <div class="cms-spinner"></div>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(Error))
+    {
+        <div class="data-table-error">
+            <SvgIcon Name="icon-x" Size="16" Color="var(--red)" />
+            <span>@Error</span>
+            @if (OnRetry.HasDelegate)
+            {
+                <button class="btn-ghost btn-sm ms-2" @onclick="OnRetry">
+                    <SvgIcon Name="icon-refresh" Size="13" /> Tekrar dene
+                </button>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="cms-table-wrap">
+            <table class="cms-table">
+                @ChildContent
+            </table>
+        </div>
+
+        <Paginator CurrentPage="@CurrentPage"
+                   TotalCount="@TotalCount"
+                   PageSize="@PageSize"
+                   OnPageChange="OnPageChange"
+                   OnPageSizeChange="OnPageSizeChange" />
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public int CurrentPage { get; set; }
+    [Parameter] public int TotalCount { get; set; }
+    [Parameter] public int PageSize { get; set; } = 25;
+    [Parameter] public EventCallback OnRetry { get; set; }
+    [Parameter] public EventCallback<int> OnPageChange { get; set; }
+    [Parameter] public EventCallback<int> OnPageSizeChange { get; set; }
+}

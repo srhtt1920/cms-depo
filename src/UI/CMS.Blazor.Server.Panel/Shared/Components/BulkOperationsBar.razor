@@ -1,0 +1,127 @@
+@*
+    Kullanım (Contents.razor içinde):
+    <BulkOperationsBar SelectedIds="_selected"
+                       OnPublish="BulkPublishAsync"
+                       OnArchive="BulkArchiveAsync"
+                       OnDelete="() => _confirmBulkDelete = true"
+                       OnClear="() => _selected.Clear()" />
+*@
+
+@if (!SelectedIds.Any()) { return; }
+
+<div class="bulk-bar d-flex align-items-center gap-2 px-3 py-2 rounded mb-3"
+     style="background:var(--accent-soft,rgba(99,102,241,.08));border:1px solid var(--accent);
+            animation:bulk-slide-in .2s ease">
+
+    <!-- Seçim sayısı -->
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge" style="background:var(--accent);font-size:11px">
+            @SelectedIds.Count
+        </span>
+        <span class="fw-medium" style="font-size:13px;color:var(--accent)">
+            içerik seçildi
+        </span>
+    </div>
+
+    <div class="vr mx-1" style="height:20px;opacity:.4"></div>
+
+    <!-- Aksiyonlar -->
+    <div class="d-flex align-items-center gap-1 flex-wrap">
+
+        @if (OnPublish.HasDelegate && AppState.Session.Can("content.publish"))
+        {
+            <button class="btn btn-sm btn-outline-success bulk-btn"
+                    @onclick="() => OnPublish.InvokeAsync()"
+                    disabled="@Busy" title="Seçilileri Yayınla">
+                @if (Busy && _action == "publish")
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+
+                    <span>🚀</span>
+                }
+                <span class="d-none d-sm-inline ms-1">Yayınla</span>
+            </button>
+        }
+
+        @if (OnArchive.HasDelegate && AppState.Session.Can("content.publish"))
+        {
+            <button class="btn btn-sm btn-outline-secondary bulk-btn"
+                    @onclick="() => OnArchive.InvokeAsync()"
+                    disabled="@Busy" title="Seçilileri Arşivle">
+                @if (Busy && _action == "archive")
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+
+                    <span>🗄️</span>
+                }
+                <span class="d-none d-sm-inline ms-1">Arşivle</span>
+            </button>
+        }
+
+        @if (OnLock.HasDelegate && AppState.Session.Can("content.publish"))
+        {
+            <button class="btn btn-sm btn-outline-warning bulk-btn"
+                    @onclick="() => OnLock.InvokeAsync()"
+                    disabled="@Busy" title="Seçilileri Kilitle">
+                🔒 <span class="d-none d-sm-inline ms-1">Kilitle</span>
+            </button>
+        }
+
+        @if (OnDelete.HasDelegate && AppState.Session.Can("content.delete"))
+        {
+            <button class="btn btn-sm btn-outline-danger bulk-btn"
+                    @onclick="() => OnDelete.InvokeAsync()"
+                    disabled="@Busy" title="Seçilileri Sil">
+                🗑️ <span class="d-none d-sm-inline ms-1">Sil</span>
+            </button>
+        }
+    </div>
+
+    <!-- Temizle -->
+    <button class="btn btn-ghost btn-sm ms-auto d-flex align-items-center gap-1"
+            style="font-size:12px;color:var(--text-3)"
+            @onclick="() => OnClear.InvokeAsync()"
+            disabled="@Busy">
+        <svg width="10" height="10" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854z" />
+        </svg>
+        Seçimi Temizle
+    </button>
+</div>
+
+<style>
+    @@keyframes bulk-slide-in {
+        from {
+            opacity: 0;
+            transform: translateY(-8px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .bulk-btn {
+        font-size: 12px;
+        padding: 3px 10px;
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public HashSet<Guid> SelectedIds { get; set; } = [];
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback OnPublish { get; set; }
+    [Parameter] public EventCallback OnArchive { get; set; }
+    [Parameter] public EventCallback OnLock { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    [Parameter] public EventCallback OnClear { get; set; }
+
+    string? _action;
+}

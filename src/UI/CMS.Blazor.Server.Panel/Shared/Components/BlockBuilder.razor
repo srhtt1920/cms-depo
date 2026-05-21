@@ -1,0 +1,469 @@
+﻿<div class="block-builder">
+    <!-- Toolbar -->
+    <div class="bb-toolbar d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <span class="fw-semibold small">Bloklar</span>
+        <div class="d-flex gap-1 ms-auto flex-wrap">
+            @foreach (var type in _blockTypes)
+            {
+                var t = type;
+                <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                        style="font-size:11px"
+                        @onclick="() => AddBlock(t.Key)"
+                        disabled="@_saving">
+                    <span>@t.Icon</span> @t.Label
+                </button>
+            }
+        </div>
+        @if (_preview)
+        {
+            <button class="btn btn-sm btn-outline-primary" style="font-size:11px"
+                    @onclick="() => _preview = false">
+                ✏ Düzenle
+            </button>
+        }
+        else
+        {
+            <button class="btn btn-sm btn-success" style="font-size:11px"
+                    @onclick="() => _preview = true">
+                👁 Önizle
+            </button>
+        }
+    </div>
+
+    @if (_preview)
+    {
+        <!-- ── PREVIEW MOD ──────────────────────────────────────────── -->
+        <div class="bb-preview border rounded-2 p-3" style="background:var(--surface-1);min-height:200px">
+            @if (!Blocks.Any())
+            {
+                <p class="text-muted text-center py-5 small">Henüz blok yok</p>
+            }
+            @foreach (var block in Blocks.OrderBy(b => b.Order))
+            {
+                var tr = block.Translations.FirstOrDefault(t => t.LanguageCode == PreviewLang)
+                ?? block.Translations.FirstOrDefault();
+                <div class="bb-preview-block mb-3">
+                    @switch (block.BlockType)
+                    {
+                        case "Text":
+                            <div>
+                                @if (!string.IsNullOrEmpty(tr?.Title))
+                                {
+                                    <h4 style="font-size:18px;font-weight:600;margin-bottom:8px">@tr.Title</h4>
+                                }
+                                @if (!string.IsNullOrEmpty(tr?.Body))
+                                {
+                                    <div style="font-size:13px;line-height:1.7;color:var(--text-2)">
+                                        @((MarkupString)tr.Body)
+                                    </div>
+                                }
+                            </div>
+                            break;
+                        case "Image":
+                            var imgSettings = TryParseSettings(block.Settings);
+                            var src = imgSettings.GetValueOrDefault("url", "");
+                            <div class="text-center">
+                                @if (!string.IsNullOrEmpty(src))
+                                {
+                                    <img src="@src" alt="@(tr?.AltText ?? "")"
+                                         style="max-width:100%;border-radius:var(--r-md)" />
+                                }
+                                else
+                                {
+                                    <div class="border rounded-2 d-flex align-items-center justify-content-center text-muted"
+                                         style="height:150px;background:var(--surface-2);font-size:12px">
+                                        🖼 Görsel
+                                    </div>
+                                }
+                            </div>
+                            break;
+                        case "Card":
+                            <div class="card border-0 shadow-sm">
+                                <div class="card-body">
+                                    @if (!string.IsNullOrEmpty(tr?.Title))
+                                    {
+                                        <h5 class="card-title" style="font-size:15px">@tr.Title</h5>
+                                    }
+                                    @if (!string.IsNullOrEmpty(tr?.Body))
+                                    {
+                                        <p class="card-text small text-muted">@tr.Body</p>
+                                    }
+                                </div>
+                            </div>
+                            break;
+                        case "Action":
+                            <div class="text-center">
+                                <a class="btn btn-primary btn-sm">@(tr?.LinkText ?? "Tıkla")</a>
+                            </div>
+                            break;
+                        case "Slider":
+                            <div class="border rounded-2 p-3 text-center" style="background:var(--brand-light)">
+                                <div class="fw-semibold">@(tr?.Title ?? "Slider Başlığı")</div>
+                                <div class="text-muted small mt-1">Slider içeriği burada görünür</div>
+                            </div>
+                            break;
+                        default:
+                            <div class="border rounded-2 p-2 text-muted small text-center">@block.BlockType</div>
+                            break;
+                    }
+                </div>
+            }
+        </div>
+        <!-- Dil seçici -->
+        <div class="d-flex gap-1 mt-2">
+            @foreach (var l in AvailableLangs)
+            {
+                var lang = l;
+                <button class="btn btn-sm @(_previewLang == lang ? "btn-primary" : "btn-outline-secondary")"
+                        style="font-size:10px;padding:2px 8px"
+                        @onclick="() => _previewLang = lang">
+                    @lang.ToUpper()
+                </button>
+            }
+        </div>
+    }
+    else
+    {
+        <!-- ── EDIT MOD ─────────────────────────────────────────────── -->
+        @if (!Blocks.Any())
+        {
+            <div class="bb-empty border-2 border-dashed rounded-3 d-flex flex-column align-items-center justify-content-center text-muted"
+                 style="min-height:180px;border-color:var(--border)">
+                <svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16" class="mb-2 opacity-50">
+                    <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" />
+                </svg>
+                <p class="small">Yukarıdan blok türü seçerek başlayın</p>
+            </div>
+        }
+
+        <div class="bb-list">
+            @foreach (var block in Blocks.OrderBy(b => b.Order))
+            {
+                var b = block;
+                var isExpanded = _expanded.Contains(b.Id);
+                <div class="bb-block @(isExpanded ? "bb-block--open" : "")"
+                     draggable="true"
+                     @ondragstart="() => DragStart(b)"
+                     @ondragover:preventDefault
+                     @ondragover="() => DragOver(b)"
+                     @ondrop="() => Drop()">
+                    <!-- Block Header -->
+                    <div class="bb-block-header" @onclick="() => ToggleExpand(b.Id)">
+                        <div class="bb-drag-handle" title="Sürükle">⠿</div>
+                        <span class="badge bg-secondary me-2" style="font-size:9px">@b.BlockType</span>
+                        <span class="small fw-medium" style="font-size:12px">
+                            @BlockPreviewLabel(b)
+                        </span>
+                        @if (!b.IsVisible)
+                        {
+                            <span class="badge bg-secondary ms-2" style="font-size:9px">Gizli</span>
+                        }
+                        <div class="ms-auto d-flex gap-1">
+                            <button class="btn-ghost btn-icon" style="width:22px;height:22px"
+                                    title="@(b.IsVisible ? "Gizle" : "Göster")"
+                                    @onclick="() => ToggleVisible(b)"
+                                    @onclick:stopPropagation>
+                                <svg width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
+                                    @if (b.IsVisible)
+                                    {
+                                        <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z" />
+                                        <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z" />
+                                    }
+                                    else
+                                    {
+                                        <path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486z" />
+                                        <path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z" />
+                                        <path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238z" />
+                                        <path fill-rule="evenodd" d="M13.646 14.354l-12-12 .708-.708 12 12-.708.708z" />
+                                    }
+                                </svg>
+                            </button>
+                            <button class="btn-ghost btn-icon" style="width:22px;height:22px;color:var(--red)"
+                                    title="Bloğu Sil"
+                                    @onclick="() => DeleteBlock(b)"
+                                    @onclick:stopPropagation>
+                                <svg width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z" />
+                                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3V2h11v1z" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Block Body (expanded) -->
+                    @if (isExpanded)
+                    {
+                        <div class="bb-block-body">
+                            <!-- Settings JSON editor (simplified) -->
+                            <div class="mb-3">
+                                <label class="form-label small fw-medium mb-1">Ayarlar (JSON)</label>
+                                <textarea class="form-control form-control-sm font-monospace"
+                                          rows="3" style="font-size:11px"
+                                          value="@b.Settings"
+                                          @onchange='e => UpdateSettings(b, e.Value?.ToString() ?? "{}")'>
+                                            </textarea>
+                            </div>
+                            <!-- Order -->
+                            <div class="d-flex align-items-center gap-2 mb-3">
+                                <label class="form-label small fw-medium mb-0">Sıra</label>
+                                <input type="number" class="form-control form-control-sm" style="width:80px"
+                                       value="@b.Order"
+                                       @onchange="e => UpdateOrder(b, int.TryParse(e.Value?.ToString(), out var n) ? n : b.Order)" />
+                            </div>
+                            <!-- Translations -->
+                            <div>
+                                <label class="form-label small fw-medium mb-2">Çeviriler</label>
+                                @foreach (var lang in AvailableLangs)
+                                {
+                                    var l = lang;
+                                    var tr = b.Translations.FirstOrDefault(t => t.LanguageCode == l);
+                                    <BlockTranslationEditor Block="@b"
+                                                            SectionName="@SectionName"
+                                                            Translation="@tr"
+                                                            Lang="@l"
+                                                            ContentId="@ContentId"
+                                                            SectionId="@SectionId"
+                                                            OnSaved="@OnChanged" />
+                                }
+                            </div>
+                            <div class="text-end">
+                                <button class="btn btn-sm btn-primary"
+                                        @onclick="() => SaveBlock(b)" disabled="@_saving">
+                                    @if (_saving)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1"></span>
+                                    }
+                                    Kaydet
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .block-builder {
+    }
+
+    .bb-block {
+        border: 1px solid var(--border);
+        border-radius: var(--r-md);
+        margin-bottom: 8px;
+        background: var(--surface-0);
+        transition: box-shadow .15s;
+    }
+
+        .bb-block:hover {
+            box-shadow: var(--shadow);
+        }
+
+    .bb-block--open {
+        border-color: var(--accent);
+    }
+
+    .bb-block-header {
+        display: flex;
+        align-items: center;
+        padding: 8px 12px;
+        cursor: pointer;
+        gap: 6px;
+    }
+
+    .bb-drag-handle {
+        color: var(--text-3);
+        cursor: grab;
+        font-size: 16px;
+        line-height: 1;
+        flex-shrink: 0;
+    }
+
+    .bb-block-body {
+        padding: 12px 16px;
+        border-top: 1px solid var(--border);
+        background: var(--surface-1);
+    }
+
+    .bb-preview-block {
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public Guid ContentId { get; set; }
+    [Parameter, EditorRequired] public Guid SectionId { get; set; }
+    [Parameter, EditorRequired] public string SectionName { get; set; } = "";
+    [Parameter, EditorRequired] public List<BlockDto> Blocks { get; set; } = [];
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public string PreviewLang { get; set; } = "tr";
+
+    bool _preview, _saving;
+    string _previewLang = "tr";
+    HashSet<Guid> _expanded = [];
+
+    // Hardcoded dil listesi yerine LangState kullan (tenant'ın gerçek dilleri)
+    IEnumerable<string> AvailableLangs =>
+        LangState.SupportedLanguages.Count > 0
+            ? LangState.SupportedLanguages
+            : ["tr", "en"];
+
+    BlockDto? _dragSource;
+    BlockDto? _dragTarget;
+    Dictionary<Guid, string> _pendingSettings = new();
+    Dictionary<Guid, int> _pendingOrders = new();
+
+    static readonly List<(string Key, string Label, string Icon)> _blockTypes =
+    [
+        ("Text",   "Metin",   "📝"),
+        ("Image",  "Görsel",  "🖼"),
+        ("Card",   "Kart",    "🃏"),
+        ("Action", "Buton",   "🔗"),
+        ("Slider", "Slider",  "🎠"),
+    ];
+
+    void ToggleExpand(Guid id)
+    {
+        if (!_expanded.Remove(id)) _expanded.Add(id);
+    }
+
+    string BlockPreviewLabel(BlockDto b)
+    {
+        var tr = b.Translations.FirstOrDefault();
+        return tr?.Title ?? tr?.AltText ?? tr?.LinkText ?? $"{b.BlockType} #{b.Order}";
+    }
+
+    async Task AddBlock(string type)
+    {
+        _saving = true;
+        var nextOrder = Blocks.Any() ? Blocks.Max(b => b.Order) + 1 : 0;
+        var blockTypeInt = type switch
+        {
+            "Text" => 0,
+            "Image" => 1,
+            "Card" => 2,
+            "Action" => 3,
+            "Slider" => 4,
+            _ => 0
+        };
+        var r = await ContentApiClient.UpsertBlockAsync(ContentId, SectionId,
+            new UpsertBlockRequest(blockTypeInt, nextOrder, true, "{}", null));
+        _saving = false;
+        if (r.IsSuccess) await OnChanged.InvokeAsync();
+    }
+
+    async Task ToggleVisible(BlockDto b)
+    {
+        _saving = true;
+        var blockTypeInt = b.BlockType switch
+        {
+            "Text" => 0,
+            "Image" => 1,
+            "Card" => 2,
+            "Action" => 3,
+            "Slider" => 4,
+            _ => 0
+        };
+        await ContentApiClient.UpsertBlockAsync(ContentId, SectionId,
+            new UpsertBlockRequest(blockTypeInt, b.Order, !b.IsVisible, b.Settings, b.Id));
+        _saving = false;
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task DeleteBlock(BlockDto b)
+    {
+        _saving = true;
+        await ContentApiClient.DeleteBlockAsync(ContentId, SectionId, b.Id);
+        _saving = false;
+        await OnChanged.InvokeAsync();
+    }
+
+    void UpdateSettings(BlockDto b, string json)
+    {
+        _pendingSettings[b.Id] = json;
+    }
+
+    void UpdateOrder(BlockDto b, int order)
+    {
+        _pendingOrders[b.Id] = order;
+    }
+
+    async Task SaveBlock(BlockDto b)
+    {
+        _saving = true;
+        var settings = _pendingSettings.GetValueOrDefault(b.Id, b.Settings);
+        var order = _pendingOrders.GetValueOrDefault(b.Id, b.Order);
+        var blockTypeInt = b.BlockType switch
+        {
+            "Text" => 0,
+            "Image" => 1,
+            "Card" => 2,
+            "Action" => 3,
+            "Slider" => 4,
+            _ => 0
+        };
+        await ContentApiClient.UpsertBlockAsync(ContentId, SectionId,
+            new UpsertBlockRequest(blockTypeInt, order, b.IsVisible, settings, b.Id));
+        _saving = false;
+        await OnChanged.InvokeAsync();
+    }
+
+    // Drag & Drop
+    void DragStart(BlockDto b) { _dragSource = b; }
+    void DragOver(BlockDto target) { _dragTarget = target; }
+    async Task Drop()
+    {
+        if (_dragSource is null || _dragTarget is null || _dragSource.Id == _dragTarget.Id)
+        {
+            _dragSource = null;
+            _dragTarget = null;
+            return;
+        }
+
+        // Sürüklenen bloğun sırasını hedef blokla değiştir
+        var sourceOrder = _dragSource.Order;
+        var targetOrder = _dragTarget.Order;
+
+        var srcTypeInt = _dragSource.BlockType switch
+        {
+            "Text" => 0,
+            "Image" => 1,
+            "Card" => 2,
+            "Action" => 3,
+            "Slider" => 4,
+            _ => 0
+        };
+        var tgtTypeInt = _dragTarget.BlockType switch
+        {
+            "Text" => 0,
+            "Image" => 1,
+            "Card" => 2,
+            "Action" => 3,
+            "Slider" => 4,
+            _ => 0
+        };
+
+        _saving = true;
+        await ContentApiClient.UpsertBlockAsync(ContentId, SectionId,
+            new UpsertBlockRequest(srcTypeInt, targetOrder, _dragSource.IsVisible,
+                _pendingSettings.GetValueOrDefault(_dragSource.Id, _dragSource.Settings), _dragSource.Id));
+        await ContentApiClient.UpsertBlockAsync(ContentId, SectionId,
+            new UpsertBlockRequest(tgtTypeInt, sourceOrder, _dragTarget.IsVisible,
+                _pendingSettings.GetValueOrDefault(_dragTarget.Id, _dragTarget.Settings), _dragTarget.Id));
+        _saving = false;
+
+        _dragSource = null;
+        _dragTarget = null;
+        await OnChanged.InvokeAsync();
+    }
+
+    static Dictionary<string, string> TryParseSettings(string json)
+    {
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json)
+                   ?? new();
+        }
+        catch { return new(); }
+    }
+}

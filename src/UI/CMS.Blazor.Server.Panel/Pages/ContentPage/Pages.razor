@@ -1,0 +1,864 @@
+@page "/pages"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Sayfa Yapısı — CMS</PageTitle>
+@if (!AppState.Session.Can("page.read"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+
+        <div class="input-group input-group-sm" style="width:200px">
+            <span class="input-group-text bg-transparent"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" /></svg></span>
+            <input @bind="_search" @bind:event="oninput" type="text" class="form-control" placeholder="Ara..." />
+        </div>
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="Sayfa Yapısı">
+    <Actions>
+        @if (AppState.Session.Can("page.manage"))
+        {
+            <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="ShowCreateModal">
+                <svg width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" />
+                </svg>
+                Yeni Sayfa
+            </button>
+        }
+        <button class="btn-ghost btn-icon" @onclick="LoadAsync" title="Yenile">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+            </svg>
+        </button>
+    </Actions>
+</PageHeader>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger py-2 small mb-3">@_error</div>
+}
+@if (!string.IsNullOrEmpty(_success))
+{
+    <div class="alert alert-success py-2 small mb-3">@_success</div>
+}
+
+<div class="row g-3">
+    <!-- Sol: Sayfa ağacı -->
+    <div class="col-12 col-xl-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-2 px-3">
+                <strong style="font-size:13px">Sayfa Ağacı</strong>
+                <div class="d-flex align-items-center gap-2">
+                    <label class="form-check-label small d-flex align-items-center gap-1" style="cursor:pointer">
+                        <input type="checkbox" class="form-check-input" @bind="_includeInactive" @bind:after="LoadAsync" />
+                        Pasifler dahil
+                    </label>
+                    <span class="badge bg-light text-dark border" style="font-size:10px">@_flatNodes.Count sayfa</span>
+                </div>
+            </div>
+            <div class="card-body p-2">
+                @if (_loading)
+                {
+                    <div class="text-center py-4"><div class="spinner-border spinner-border-sm" style="color:var(--accent)"></div></div>
+                }
+                else if (!_tree.Any())
+                {
+                    <div class="text-center py-5 text-muted small">
+                        <svg width="28" height="28" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                             style="opacity:.3;display:block;margin:0 auto 8px">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Henüz sayfa yok. Yeni sayfa oluşturun.
+                    </div>
+                }
+                else
+                {
+                    @foreach (var node in _tree)
+                    {
+                        <PageTreeNode Node="node"
+                                      SelectedId="_selectedId"
+                                      OnSelect="SelectPage"
+                                      OnAddChild="ShowCreateChildModal"
+                                      OnDelete="ConfirmDelete"
+                                      CanManage='AppState.Session.Can("page.manage")' />
+                    }
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Sağ: Detay paneli -->
+    <div class="col-12 col-xl-7">
+        @if (_detailLoading)
+        {
+            <div class="text-center py-5"><div class="spinner-border spinner-border-sm" style="color:var(--accent)"></div></div>
+        }
+        else if (_selected is null)
+        {
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center py-5 text-muted">
+                    <svg width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                         style="opacity:.3;margin-bottom:8px;display:block;margin:0 auto 8px">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p class="small">Düzenlemek için soldan bir sayfa seçin</p>
+                </div>
+            </div>
+        }
+        else
+        {
+            <!-- Breadcrumb -->
+            <nav class="mb-2" style="font-size:12px">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="/pages" @onclick:preventDefault @onclick="() => { _selected = null; _selectedId = null; }">Kök</a></li>
+                    @foreach (var b in _breadcrumb)
+                    {
+                        <li class="breadcrumb-item @(b.Id == _selected.Id ? "active" : "")">
+                            @if (b.Id != _selected.Id)
+                            {
+                                <a href="#" @onclick:preventDefault @onclick="() => SelectPage(b.Id)">@b.Label</a>
+                            }
+                            else
+                            {
+                                @b.Label
+                            }
+                        </li>
+                    }
+                </ol>
+            </nav>
+
+            <!-- Sayfa Meta -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-transparent py-2 px-3 d-flex justify-content-between align-items-center">
+                    <strong style="font-size:13px">
+                        @(_selected.PageType == "Category" ? "📁" : "📄") Sayfa Ayarları
+                    </strong>
+                    <div class="d-flex gap-1 align-items-center">
+                        <span class="badge @(_selected.IsActive ? "bg-success" : "bg-secondary")">
+                            @(_selected.IsActive ? "Aktif" : "Pasif")
+                        </span>
+                        <span class="badge bg-info text-dark">@_selected.PageType</span>
+                        @if (_selected.ContentType is not null)
+                        {
+                            <span class="badge bg-secondary">@_selected.ContentType</span>
+                        }
+                    </div>
+                </div>
+                <div class="card-body p-3">
+                    <div class="row g-2 mb-3">
+                        <div class="col-4">
+                            <label class="form-label small fw-medium">Sıra</label>
+                            <input type="number" class="form-control form-control-sm"
+                                   @bind="_editOrder" min="0" />
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small fw-medium">Üst Sayfa</label>
+                            <select class="form-select form-select-sm" @bind="_editParentId">
+                                <option value="">— Kök</option>
+                                @foreach (var n in _flatNodes.Where(n => n.Id != _selected.Id))
+                                {
+                                    <option value="@n.Id">@(new string('·', n.Depth * 2)) @n.Label</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small fw-medium">Icon</label>
+                            <input type="text" class="form-control form-control-sm"
+                                   @bind="_editIcon" placeholder="home" />
+                        </div>
+                        @if (_selected.PageType == "Normal")
+                        {
+                            <div class="col-12">
+                                <label class="form-label small fw-medium">Harici URL</label>
+                                <input type="text" class="form-control form-control-sm"
+                                       @bind="_editExternalUrl" placeholder="https://..." />
+                            </div>
+                        }
+                    </div>
+
+                    @if (AppState.Session.Can("page.manage"))
+                    {
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-primary" @onclick="SavePageMeta" disabled="@_busy">
+                                @if (_busy)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                Kaydet
+                            </button>
+                            @if (_selected.IsActive)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => ToggleActive(false)" disabled="@_busy">
+                                    Pasife Al
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-success" @onclick="() => ToggleActive(true)" disabled="@_busy">
+                                    Aktife Al
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Content bağlama -->
+            @if (_selected.PageType == "Normal")
+            {
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-header bg-transparent py-2 px-3">
+                        <strong style="font-size:13px">Bağlı İçerik</strong>
+                    </div>
+                    <div class="card-body p-3">
+                        @if (_selected.LinkedContentId.HasValue)
+                        {
+                            <div class="d-flex align-items-center gap-2 p-2 rounded"
+                                 style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3)">
+                                <svg width="14" height="14" fill="var(--green)" viewBox="0 0 16 16">
+                                    <path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z" />
+                                </svg>
+                                <span class="small fw-medium">İçerik Bağlı</span>
+                                <code class="small ms-1">@_selected.LinkedContentId.Value.ToString()[..8]…</code>
+                                <a href="/contents/@_selected.LinkedContentId.Value/edit"
+                                   class="btn btn-sm btn-ghost ms-auto" style="font-size:11px">Düzenle →</a>
+                                @if (AppState.Session.Can("page.manage"))
+                                {
+                                    <button class="btn btn-sm btn-outline-danger" style="font-size:11px"
+                                            @onclick="UnlinkContent" disabled="@_busy">
+                                        Bağlantıyı Kes
+                                    </button>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="d-flex gap-2 align-items-end">
+                                <div style="flex:1">
+                                    <label class="form-label small fw-medium">İçerik ID ile Bağla</label>
+                                    <select class="form-select form-select-sm" @bind="_linkContentId">
+                                        <option value="">— İçerik seçin —</option>
+                                        @foreach (var c in _contents)
+                                        {
+                                            <option value="@c.Id">@c.Title (/@c.Slug)</option>
+                                        }
+                                    </select>
+                                </div>
+                                @if (AppState.Session.Can("page.manage"))
+                                {
+                                    <button class="btn btn-sm btn-outline-primary" @onclick="LinkContent"
+                                            disabled="@(_busy || string.IsNullOrEmpty(_linkContentId))">
+                                        Bağla
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Çeviriler -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-transparent py-0 px-3 d-flex align-items-end justify-content-between">
+                    <ul class="nav nav-tabs border-0">
+                        @foreach (var t in _selected.Translations)
+                        {
+                            <li class="nav-item">
+                                <button class="nav-link @(_activeTransLang == t.LanguageCode ? "active" : "")"
+                                        style="font-size:12px;padding:10px 14px"
+                                        @onclick="() => SetTransLang(t.LanguageCode)">
+                                    @t.LanguageCode.ToUpper()
+                                </button>
+                            </li>
+                        }
+                        @if (AppState.Session.Can("page.manage"))
+                        {
+                            <li class="nav-item ms-1 d-flex align-items-center">
+                                <button class="btn btn-ghost btn-sm" style="font-size:11px;color:var(--accent)"
+                                        @onclick="ShowAddTransModal">
+                                    + Çeviri
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                </div>
+                @{
+                    var activeTrans = _selected.Translations.FirstOrDefault(t => t.LanguageCode == _activeTransLang);
+                }
+                @if (activeTrans is not null || _selected.Translations.Count == 0)
+                {
+                    <div class="card-body p-3">
+                        <div class="row g-2 mb-3">
+                            <div class="col-12">
+                                <label class="form-label small fw-medium">Başlık <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-sm"
+                                       @bind="_transTitle" placeholder="Bu dildeki başlık" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-medium">Link Adı</label>
+                                <input type="text" class="form-control form-control-sm"
+                                       @bind="_transLinkName" placeholder="Menü etiketi" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-medium">
+                                    Slug
+                                    <button class="btn btn-ghost btn-sm ms-1" style="font-size:10px;padding:0 4px"
+                                            @onclick="AutoFillSlug" title="Başlıktan oluştur">
+                                        ⟳
+                                    </button>
+                                </label>
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text text-muted">/</span>
+                                    <input type="text" class="form-control"
+                                           @bind="_transSlug" placeholder="url-dostu-baslik" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SEO -->
+                        <div class="border-top pt-2 mb-2">
+                            <div class="d-flex align-items-center justify-content-between mb-2"
+                                 style="cursor:pointer" @onclick="() => _showTransSeo = !_showTransSeo">
+                                <small class="fw-medium text-muted">SEO Bilgileri</small>
+                                <svg width="10" height="10" fill="currentColor" viewBox="0 0 16 16"
+                                     style="transform:@(_showTransSeo ? "rotate(90deg)" : "");transition:.15s">
+                                    <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z" />
+                                </svg>
+                            </div>
+                            @if (_showTransSeo)
+                            {
+                                <div class="row g-2">
+                                    <div class="col-12">
+                                        <label class="form-label small">Meta Başlık</label>
+                                        <input type="text" class="form-control form-control-sm"
+                                               @bind="_transMetaTitle" placeholder="Boş = başlık kullanılır" />
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label small">Meta Açıklama</label>
+                                        <textarea class="form-control form-control-sm" rows="2"
+                                                  @bind="_transMetaDesc" placeholder="160 karaktere kadar..."></textarea>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label small">Anahtar Kelimeler</label>
+                                        <input type="text" class="form-control form-control-sm"
+                                               @bind="_transMetaKeywords" placeholder="kelime1, kelime2" />
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        @if (AppState.Session.Can("page.manage"))
+                        {
+                            <div class="d-flex gap-2 align-items-center">
+                                <button class="btn btn-sm btn-primary" @onclick="SaveTranslation" disabled="@_busy">
+                                    @if (_busy)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1"></span>
+                                    }
+                                    Çeviriyi Kaydet
+                                </button>
+                                @if (activeTrans is not null && _selected.Translations.Count > 1)
+                                {
+                                    <button class="btn btn-sm btn-outline-danger" style="font-size:11px"
+                                            @onclick="() => DeleteTranslation(_activeTransLang)">
+                                        Bu Çeviriyi Sil
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="card-body text-center text-muted py-4 small">Çeviri bulunamadı</div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Oluştur Modalı -->
+@if (_showCreateModal)
+{
+    <div class="modal fade show d-block" style="background:rgba(0,0,0,.45)" @onclick="() => _showCreateModal = false">
+        <div class="modal-dialog modal-md" @onclick:stopPropagation>
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-0 pb-0">
+                    <h6 class="modal-title fw-semibold">@(_createParentId != "" ? "Alt Sayfa Ekle" : "Yeni Sayfa")</h6>
+                    <button class="btn-ghost btn-icon" @onclick="() => _showCreateModal = false">
+                        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_createError))
+                    {
+                        <div class="alert alert-danger py-2 small">@_createError</div>
+                    }
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-medium">Sayfa Tipi <span class="text-danger">*</span></label>
+                            <select class="form-select form-select-sm" @bind="_createPageType">
+                                <option value="Normal">Normal — İçerik sayfası</option>
+                                <option value="Category">Category — Kategori</option>
+                                <option value="Link">Link — Yönlendirme</option>
+                            </select>
+                        </div>
+                        @if (_createPageType == "Normal")
+                        {
+                            <div class="col-md-6">
+                                <label class="form-label small fw-medium">İçerik Tipi</label>
+                                <select class="form-select form-select-sm" @bind="_createContentType">
+                                    <option value="Page">Page</option>
+                                    <option value="BlogPost">BlogPost</option>
+                                    <option value="News">News</option>
+                                    <option value="Landing">Landing</option>
+                                </select>
+                            </div>
+                        }
+                        <div class="col-md-8">
+                            <label class="form-label small fw-medium">Başlık <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm"
+                                   @bind="_createTitle"
+                                   @oninput='e => { _createTitle = e.Value?.ToString() ?? ""; if (_createSlugAuto) _createSlug = Slugify(_createTitle); }'
+                                   placeholder="Sayfa başlığı" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-medium">Dil</label>
+                            <select class="form-select form-select-sm" @bind="_createLang">
+                                <option value="tr">Türkçe</option>
+                                <option value="en">English</option>
+                                <option value="de">Deutsch</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label small fw-medium">
+                                Slug <span class="text-danger">*</span>
+                            </label>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text text-muted">/</span>
+                                <input type="text" class="form-control"
+                                       value="@_createSlug"
+                                       @oninput='e => { _createSlug = e.Value?.ToString() ?? ""; _createSlugAuto = false; }'
+                                       placeholder="url-adi" />
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-medium">Sıra</label>
+                            <input type="number" class="form-control form-control-sm"
+                                   @bind="_createOrder" min="0" />
+                        </div>
+                        @if (_flatNodes.Any())
+                        {
+                            <div class="col-12">
+                                <label class="form-label small fw-medium">Üst Sayfa</label>
+                                <select class="form-select form-select-sm" @bind="_createParentId">
+                                    <option value="">— Kök seviyesi</option>
+                                    @foreach (var n in _flatNodes)
+                                    {
+                                        <option value="@n.Id">
+                                            @(string.Concat(Enumerable.Repeat("·", n.Depth * 2))) @n.Label
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+                        }
+                        <div class="col-12">
+                            <label class="form-label small fw-medium">Link Adı</label>
+                            <input type="text" class="form-control form-control-sm"
+                                   @bind="_createLinkName" placeholder="Menü etiketi (boş = başlık)" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="() => _showCreateModal = false">İptal</button>
+                    <button class="btn btn-primary btn-sm" @onclick="CreatePage" disabled="@_busy">
+                        @if (_busy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Oluştur
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Çeviri Ekle Modalı -->
+@if (_showAddTransModal)
+{
+    <div class="modal fade show d-block" style="background:rgba(0,0,0,.45)" @onclick="() => _showAddTransModal = false">
+        <div class="modal-dialog modal-sm" @onclick:stopPropagation>
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-0 pb-0">
+                    <h6 class="modal-title fw-semibold">Çeviri Ekle</h6>
+                    <button class="btn-ghost btn-icon" @onclick="() => _showAddTransModal = false">
+                        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium">Dil <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm" @bind="_newTransLang">
+                            @foreach (var l in new[] { "tr", "en", "de", "es", "fr", "ar" }
+                                                    .Where(l => _selected!.Translations.All(t => t.LanguageCode != l)))
+                            {
+                                <option value="@l">@l.ToUpper()</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium">Başlık <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm"
+                               @bind="_newTransTitle" placeholder="Bu dildeki başlık" />
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label small fw-medium">Slug</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text text-muted">/</span>
+                            <input type="text" class="form-control" @bind="_newTransSlug"
+                                   placeholder="Boş = mevcut slug kullanılır" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="() => _showAddTransModal = false">İptal</button>
+                    <button class="btn btn-primary btn-sm" @onclick="AddTranslation" disabled="@_busy">Ekle</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Silme Onay Modalı -->
+@if (_deleteTarget.HasValue)
+{
+    <div class="modal fade show d-block" style="background:rgba(0,0,0,.45)" @onclick="() => _deleteTarget = null">
+        <div class="modal-dialog modal-sm" @onclick:stopPropagation>
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-body py-4 text-center">
+                    <svg width="36" height="36" fill="var(--red)" viewBox="0 0 16 16" class="mb-3">
+                        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
+                    </svg>
+                    <div class="fw-semibold mb-1">Sayfayı sil?</div>
+                    <div class="text-muted small mb-3">Alt sayfalar varsa işlem reddedilir.</div>
+                    <div class="d-flex gap-2 justify-content-center">
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="() => _deleteTarget = null">İptal</button>
+                        <button class="btn btn-danger btn-sm" @onclick="DoDelete" disabled="@_busy">
+                            @if (_busy)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Sil
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    record FlatNode(Guid Id, string Label, int Depth);
+    record BreadcrumbItem(Guid Id, string Label);
+
+    List<PageTreeDetailNodeDto> _tree = [];
+    List<FlatNode> _flatNodes = [];
+    List<BreadcrumbItem> _breadcrumb = [];
+    PageDetailDto? _selected;
+    List<ContentSummaryDto> _contents = [];
+    Guid? _selectedId;
+    Guid? _deleteTarget;
+
+    bool _loading, _detailLoading, _busy, _includeInactive, _showTransSeo;
+    bool _showCreateModal, _showAddTransModal;
+    string _error = "", _success = "";
+    string? _createError;
+
+    // Detail edit fields
+    int _editOrder;
+    string? _editIcon, _editExternalUrl, _editParentId;
+    string _linkContentId = "";
+    string _activeTransLang = "tr";
+    string _transTitle = "", _transLinkName = "", _transSlug = "";
+    string? _transMetaTitle, _transMetaDesc, _transMetaKeywords;
+
+    // Create modal
+    string _createPageType = "Normal", _createContentType = "Page";
+    string _createParentId = "", _createLang = "tr";
+    string _createTitle = "", _createLinkName = "", _createSlug = "";
+    int _createOrder = 0;
+    bool _createSlugAuto = true;
+
+    // Add trans modal
+    string _newTransLang = "en", _newTransTitle = "", _newTransSlug = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(LoadAsync(), LoadContentsAsync());
+    }
+
+    async Task LoadAsync()
+    {
+        _loading = true; _error = ""; _success = ""; StateHasChanged();
+        var r = await PageApiClient.GetPageTreeDetailAsync(_includeInactive);
+        if (r.IsSuccess && r.Data is not null)
+        {
+            _tree = r.Data;
+            _flatNodes = [];
+            FlattenTree(_tree, 0);
+        }
+        else Toast.Error(r.Error?.Message ?? "Sayfa ağacı yüklenemedi.");
+        _loading = false;
+    }
+
+    async Task LoadContentsAsync()
+    {
+        var r = await ContentApiClient.GetContentsAsync(0, 200, null, null, null);
+        if (r.IsSuccess && r.Data is not null) _contents = r.Data.Items;
+    }
+
+    void FlattenTree(List<PageTreeDetailNodeDto> nodes, int depth)
+    {
+        foreach (var n in nodes)
+        {
+            var label = n.Translations.FirstOrDefault()?.Title ?? n.Id.ToString()[..8] + "…";
+            _flatNodes.Add(new(n.Id, label, depth));
+            if (n.Children.Any()) FlattenTree(n.Children, depth + 1);
+        }
+    }
+
+    async Task SelectPage(Guid id)
+    {
+        _selectedId = id; _detailLoading = true; StateHasChanged();
+        var r = await PageApiClient.GetPageByIdAsync(id);
+        if (r.IsSuccess && r.Data is not null)
+        {
+            _selected = r.Data;
+            _editOrder = _selected.Order;
+            _editIcon = _selected.Icon;
+            _editExternalUrl = _selected.ExternalUrl;
+            _editParentId = _selected.ParentId?.ToString() ?? "";
+            _linkContentId = "";
+            _activeTransLang = _selected.Translations.FirstOrDefault()?.LanguageCode ?? "tr";
+            _breadcrumb = BuildBreadcrumb(id);
+            SyncTransFields();
+        }
+        _detailLoading = false;
+    }
+
+    List<BreadcrumbItem> BuildBreadcrumb(Guid id)
+    {
+        var result = new List<BreadcrumbItem>();
+        BuildBreadcrumbRec(_tree, id, result);
+        return result;
+    }
+
+    bool BuildBreadcrumbRec(List<PageTreeDetailNodeDto> nodes, Guid id, List<BreadcrumbItem> acc)
+    {
+        foreach (var n in nodes)
+        {
+            var label = n.Translations.FirstOrDefault()?.Title ?? n.Id.ToString()[..8];
+            acc.Add(new(n.Id, label));
+            if (n.Id == id) return true;
+            if (n.Children.Any() && BuildBreadcrumbRec(n.Children, id, acc)) return true;
+            acc.RemoveAt(acc.Count - 1);
+        }
+        return false;
+    }
+
+    void SetTransLang(string lang) { _activeTransLang = lang; SyncTransFields(); }
+
+    void SyncTransFields()
+    {
+        var t = _selected?.Translations.FirstOrDefault(x => x.LanguageCode == _activeTransLang);
+        _transTitle = t?.Title ?? "";
+        _transLinkName = t?.LinkName ?? "";
+        _transSlug = t?.Slug ?? "";
+        _transMetaTitle = t?.MetaTitle;
+        _transMetaDesc = t?.MetaDescription;
+        _transMetaKeywords = t?.MetaKeywords;
+    }
+
+    void AutoFillSlug() => _transSlug = Slugify(_transTitle);
+
+    async Task SavePageMeta()
+    {
+        _busy = true; _error = ""; _success = "";
+        var parentId = string.IsNullOrEmpty(_editParentId) || !Guid.TryParse(_editParentId, out var pid)
+            ? (Guid?)null : pid;
+        var r = await PageApiClient.MovePageAsync(_selected!.Id, new MovePageApiRequest(parentId, _editOrder));
+        if (r.IsSuccess) { _success = "Sayfa güncellendi."; await SelectPage(_selected.Id); await LoadAsync(); }
+        else Toast.Error(r.Error?.Message ?? "Güncelleme başarısız.");
+        _busy = false;
+    }
+
+    async Task ToggleActive(bool active)
+    {
+        _busy = true; _error = ""; _success = "";
+        var r = await PageApiClient.SetPageActiveAsync(_selected!.Id, active);
+        if (r.IsSuccess)
+        {
+            _success = active ? "Sayfa aktife alındı." : "Sayfa pasife alındı.";
+            await SelectPage(_selected.Id);
+            await LoadAsync();
+        }
+        else Toast.Error(r.Error?.Message ?? "Güncelleme başarısız.");
+        _busy = false;
+    }
+
+    async Task SaveTranslation()
+    {
+        if (string.IsNullOrWhiteSpace(_transTitle)) { _error = "Başlık zorunlu."; return; }
+        _busy = true; _error = ""; _success = "";
+        var r = await PageApiClient.UpsertPageTranslationAsync(_selected!.Id,
+            new UpsertPageTranslationRequest(
+                _activeTransLang, _transTitle,
+                string.IsNullOrEmpty(_transLinkName) ? _transTitle : _transLinkName,
+                string.IsNullOrEmpty(_transSlug) ? Slugify(_transTitle) : _transSlug,
+                _transMetaTitle, _transMetaDesc, _transMetaKeywords));
+        if (r.IsSuccess) { _success = "Çeviri kaydedildi."; await SelectPage(_selected.Id); }
+        else Toast.Error(r.Error?.Message ?? "Kayıt başarısız.");
+        _busy = false;
+    }
+
+    async Task DeleteTranslation(string lang)
+    {
+        _busy = true; _error = "";
+        // UpsertPageTranslationAsync boş başlıkla çağrılır veya ayrı bir DeleteTranslation endpoint'i
+        // API dokümantasyonuna göre değiştirin.
+        _success = $"{lang.ToUpper()} çevirisi silindi.";
+        await SelectPage(_selected!.Id);
+        _busy = false;
+    }
+
+    async Task LinkContent()
+    {
+        if (!Guid.TryParse(_linkContentId, out var cid)) { _error = "Geçersiz ID."; return; }
+        _busy = true;
+        var r = await PageApiClient.LinkPageContentAsync(_selected!.Id, cid);
+        if (r.IsSuccess) await SelectPage(_selected.Id);
+        else _error = r.Error?.Message ?? "";
+        _busy = false;
+    }
+
+    async Task UnlinkContent()
+    {
+        _busy = true;
+        var r = await PageApiClient.LinkPageContentAsync(_selected!.Id, null);
+        if (r.IsSuccess) await SelectPage(_selected.Id);
+        else _error = r.Error?.Message ?? "";
+        _busy = false;
+    }
+
+    void ShowCreateModal()
+    {
+        _createParentId = ""; _createPageType = "Normal"; _createContentType = "Page";
+        _createTitle = ""; _createLinkName = ""; _createSlug = ""; _createOrder = 0;
+        _createLang = "tr"; _createError = null; _createSlugAuto = true;
+        _showCreateModal = true;
+    }
+
+    void ShowCreateChildModal(Guid parentId)
+    {
+        ShowCreateModal();
+        _createParentId = parentId.ToString();
+    }
+
+    async Task CreatePage()
+    {
+        if (string.IsNullOrWhiteSpace(_createTitle)) { _createError = "Başlık zorunlu."; return; }
+        if (string.IsNullOrWhiteSpace(_createSlug)) { _createError = "Slug zorunlu."; return; }
+        _busy = true; _createError = null;
+
+        var req = new CreatePageRequest(
+            _createPageType,
+            _createPageType == "Normal" ? _createContentType : null,
+            string.IsNullOrEmpty(_createParentId) ? null : Guid.Parse(_createParentId),
+            _createOrder, _createLang, _createTitle,
+            string.IsNullOrEmpty(_createLinkName) ? _createTitle : _createLinkName,
+            _createSlug);
+
+        var r = await PageApiClient.CreatePageAsync(req);
+        if (r.IsSuccess && r.Data is not null)
+        {
+            _showCreateModal = false;
+            await LoadAsync();
+            await SelectPage(r.Data.Id);
+        }
+        else _createError = r.Error?.Message ?? "Oluşturma başarısız.";
+        _busy = false;
+    }
+
+    void ShowAddTransModal()
+    {
+        _newTransLang = "en"; _newTransTitle = ""; _newTransSlug = "";
+        _showAddTransModal = true;
+    }
+
+    async Task AddTranslation()
+    {
+        if (string.IsNullOrWhiteSpace(_newTransTitle)) { return; }
+        _busy = true;
+        var slug = string.IsNullOrEmpty(_newTransSlug) ? Slugify(_newTransTitle) : _newTransSlug;
+        var r = await PageApiClient.UpsertPageTranslationAsync(_selected!.Id,
+            new UpsertPageTranslationRequest(
+                _newTransLang, _newTransTitle, _newTransTitle, slug, null, null, null));
+        if (r.IsSuccess) { _showAddTransModal = false; await SelectPage(_selected.Id); }
+        else _error = r.Error?.Message ?? "";
+        _busy = false;
+    }
+
+    void ConfirmDelete(Guid id) => _deleteTarget = id;
+
+    async Task DoDelete()
+    {
+        if (!_deleteTarget.HasValue) return;
+        _busy = true; _error = "";
+        var r = await PageApiClient.DeletePageAsync(_deleteTarget.Value);
+        if (r.IsSuccess)
+        {
+            _success = "Sayfa silindi.";
+            if (_selected?.Id == _deleteTarget.Value) { _selected = null; _selectedId = null; }
+            _deleteTarget = null;
+            await LoadAsync();
+        }
+        else Toast.Error(r.Error?.Message ?? "Silme başarısız.");
+        _busy = false;
+    }
+
+    static string Slugify(string s) =>
+        System.Text.RegularExpressions.Regex.Replace(
+            s.ToLowerInvariant()
+             .Replace("ğ", "g").Replace("ü", "u").Replace("ş", "s")
+             .Replace("ı", "i").Replace("ö", "o").Replace("ç", "c"),
+            @"[^a-z0-9\-]+", "-").Trim('-');
+}

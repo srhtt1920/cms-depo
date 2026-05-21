@@ -1,0 +1,59 @@
+﻿@* Shared/Components/PermissionNodeView.razor *@
+@* Mevcut iskelet yerine geçen tam bileşen *@
+
+<div class="perm-node" style="padding-left:@(Level * 16)px">
+    <div class="d-flex align-items-center gap-2 py-1 px-2 rounded"
+         style="background:@(Node.Granted ? "rgba(16,185,129,.06)" : "transparent")">
+
+        @if (Node.Children.Any())
+        {
+            <button class="btn-ghost btn-icon" style="width:16px;height:16px;padding:0"
+                    @onclick="Toggle">
+                <svg width="9" height="9" fill="currentColor" viewBox="0 0 16 16"
+                     style="transform:@(_open ? "rotate(90deg)" : "rotate(0)");transition:.15s">
+                    <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+                </svg>
+            </button>
+        }
+        else
+        {
+            <span style="width:16px;display:inline-block"></span>
+        }
+
+        <!-- Granted indicator -->
+        <span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;
+                     background:@(Node.Granted ? "var(--green,#10b981)" : "var(--border)")">
+        </span>
+
+        <span class="mono" style="font-size:12px;color:@(Node.Granted ? "var(--text-1)" : "var(--text-3)")">
+            @Node.Key
+        </span>
+
+        @if (!string.IsNullOrEmpty(Node.DisplayName) && Node.DisplayName != Node.Key)
+        {
+            <span style="font-size:11px;color:var(--text-3)">— @Node.DisplayName</span>
+        }
+
+        @if (Node.Granted)
+        {
+            <span class="badge bg-success ms-auto" style="font-size:9px;padding:2px 5px">✓</span>
+        }
+    </div>
+
+    @if (_open && Node.Children.Any())
+    {
+        @foreach (var child in Node.Children)
+        {
+            <PermissionNodeView Node="child" Level="@(Level + 1)" />
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public PermissionNodeDto Node { get; set; } = null!;
+    [Parameter] public int Level { get; set; } = 0;
+
+    bool _open = true;   // default açık
+
+    void Toggle() => _open = !_open;
+}

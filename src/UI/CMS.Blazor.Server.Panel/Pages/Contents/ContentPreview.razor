@@ -1,0 +1,293 @@
+@page "/contents/{ContentId:guid}/preview"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>İçerik Önizleme — CMS</PageTitle>
+@if (!AppState.Session.Can("content.read"))
+{
+    <AccessDenied />
+    return;
+}
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+
+        <div class="input-group input-group-sm" style="width:200px">
+            <span class="input-group-text bg-transparent"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" /></svg></span>
+            <input @bind="_search" @bind:event="oninput" type="text" class="form-control" placeholder="Ara..." />
+        </div>
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="İçerik Önizleme" Subtitle="@_subtitle">
+    <Actions>
+        <!-- Görünüm modu -->
+        <div class="btn-group btn-group-sm" role="group">
+            <button class="btn @(_viewMode == "desktop" ? "btn-primary" : "btn-outline-secondary")"
+                    @onclick='() => SetView("desktop")' title="Masaüstü">
+                <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M0 4s0-2 2-2h12s2 0 2 2v6s0 2-2 2h-4l.5 1H11v1H5v-1h.5L6 12H2s-2 0-2-2V4z" />
+                </svg>
+            </button>
+            <button class="btn @(_viewMode == "mobile" ? "btn-primary" : "btn-outline-secondary")"
+                    @onclick='() => SetView("mobile")' title="Mobil">
+                <svg width="11" height="13" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M11 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h6zM5 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H5z" />
+                    <path d="M8 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Dil seçimi -->
+        @if (_langs.Count > 1)
+        {
+            <select class="form-select form-select-sm" style="width:110px" @bind="_lang" @bind:after="RenderPreview">
+                @foreach (var l in _langs)
+                {
+                    <option value="@l">@l.ToUpper()</option>
+                }
+            </select>
+        }
+
+        <!-- Önizleme tipi -->
+        <div class="btn-group btn-group-sm">
+            <button class="btn @(_previewType == "draft" ? "btn-warning" : "btn-outline-secondary")"
+                    @onclick='() => SetPreviewType("draft")'>
+                Taslak
+            </button>
+            <button class="btn @(_previewType == "published" ? "btn-success" : "btn-outline-secondary")"
+                    @onclick='() => SetPreviewType("published")'>
+                Yayın
+            </button>
+            @if (_content?.Schedule?.PublishAt is not null)
+            {
+                <button class="btn @(_previewType == "scheduled" ? "btn-info" : "btn-outline-secondary")"
+                        @onclick='() => SetPreviewType("scheduled")'>
+                    Zamanlanmış
+                </button>
+            }
+        </div>
+
+        <a href="/contents/@ContentId/edit" class="btn btn-outline-primary btn-sm">
+            ✏️ Düzenle
+        </a>
+    </Actions>
+</PageHeader>
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+        <div class="small text-muted mt-2">İçerik yükleniyor...</div>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger py-2 small">
+        @_error
+        <button class="btn btn-link btn-sm" @onclick="LoadAsync">Tekrar dene</button>
+    </div>
+}
+else if (_content is not null)
+{
+    <!-- Meta bilgi şeridi -->
+    <div class="d-flex flex-wrap align-items-center gap-3 p-3 rounded mb-3"
+         style="background:var(--surface-2,#f8fafc);border:1px solid var(--border)">
+        <span class="badge @StatusBadgeCss">@_content.Status</span>
+        <span class="small text-muted">
+            <strong>Slug:</strong> <code style="font-size:11px">/@_content.Slug</code>
+        </span>
+        @if (_content.Schedule?.PublishAt is not null)
+        {
+            <span class="small text-info">
+                🕐 Yayın: @_content.Schedule.PublishAt.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm")
+            </span>
+        }
+        @if (_content.Schedule?.UnpublishAt is not null)
+        {
+            <span class="small text-warning">
+                🕐 Yayından kalk: @_content.Schedule.UnpublishAt.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm")
+            </span>
+        }
+        <span class="small text-muted ms-auto">
+            Güncellendi: @(_content.UpdatedAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "—")
+        </span>
+    </div>
+
+    <!-- Çeviri uyarısı -->
+    @if (_activeTrans is null)
+    {
+        <div class="alert alert-warning py-2 small mb-3">
+            <strong>@_lang.ToUpper()</strong> dili için çeviri bulunamadı.
+        </div>
+    }
+
+    <!-- Önizleme çerçevesi -->
+    <div class="d-flex justify-content-center">
+        <div class="preview-frame-wrapper" style="@FrameStyle">
+            <div class="preview-chrome" style="background:#e5e7eb;border-radius:10px 10px 0 0;padding:8px 12px;display:flex;align-items:center;gap:8px">
+                <div style="width:10px;height:10px;border-radius:50%;background:#ef4444"></div>
+                <div style="width:10px;height:10px;border-radius:50%;background:#f59e0b"></div>
+                <div style="width:10px;height:10px;border-radius:50%;background:#22c55e"></div>
+                <div class="flex-fill mx-2">
+                    <div style="background:white;border-radius:4px;padding:2px 10px;font-size:11px;color:#6b7280;font-family:monospace">
+                        @PublicUrl
+                    </div>
+                </div>
+            </div>
+            <div class="preview-content" style="background:white;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 10px 10px;overflow:auto;@ContentFrameStyle">
+                @if (_activeTrans is not null)
+                {
+                    <!-- SEO Meta -->
+                    <div style="background:#f0fdf4;border-bottom:1px solid #bbf7d0;padding:12px 20px">
+                        <div style="font-size:12px;color:#15803d;font-weight:600">SEO Önizleme</div>
+                        <div style="font-size:18px;color:#1d4ed8;font-family:arial,sans-serif;margin-top:4px">
+                            @(_activeTrans.MetaTitle ?? _activeTrans.Title)
+                        </div>
+                        <div style="font-size:12px;color:#166534;font-family:monospace">@PublicUrl</div>
+                        <div style="font-size:13px;color:#374151;margin-top:2px">
+                            @(_activeTrans.MetaDescription ?? "Meta açıklama girilmemiş")
+                        </div>
+                    </div>
+
+                    <!-- İçerik -->
+                    <div style="padding:32px 40px;max-width:900px;margin:0 auto">
+                        <h1 style="font-size:@TitleFontSize;font-weight:700;color:#111827;margin-bottom:16px">
+                            @_activeTrans.Title
+                        </h1>
+                        <div style="color:#374151;line-height:1.7;font-size:15px" class="preview-body">
+                            @((MarkupString)SanitizeBody(_activeTrans.Body))
+                        </div>
+                    </div>
+
+                    <!-- Bölümler -->
+                    @if (_sections?.Any() == true)
+                    {
+                        <div style="border-top:2px dashed #e5e7eb;padding:20px 40px;background:#fafafa">
+                            <div style="font-size:11px;font-weight:600;color:#9ca3af;letter-spacing:.05em;margin-bottom:12px">BÖLÜMLER & BLOKLAR</div>
+                            @foreach (var section in _sections)
+                            {
+                                <div class="mb-3 p-3 rounded" style="background:white;border:1px solid #e5e7eb">
+                                    <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:8px">
+                                        📦 @(section.Name)
+                                        @if (!section.IsVisible)
+                                        {
+                                            <span class="badge bg-secondary ms-1" style="font-size:9px">Gizli</span>
+                                        }
+                                    </div>
+                                    @foreach (var block in section.Blocks)
+                                    {
+                                        var bt = block.Translations.FirstOrDefault(t => t.LanguageCode == _lang)
+                                        ?? block.Translations.FirstOrDefault();
+                                        <div style="margin-left:16px;padding:6px 10px;border-left:3px solid var(--accent);margin-bottom:6px">
+                                            <div style="font-size:10px;color:#9ca3af;font-weight:600">@block.BlockType</div>
+                                            @if (bt is not null)
+                                            {
+                                                <div style="font-size:13px;color:#374151;margin-top:2px">@bt.Title</div>
+                                                @if (!string.IsNullOrEmpty(bt.Body))
+                                                {
+                                                    <div style="font-size:12px;color:#6b7280">@((MarkupString)SanitizeBody(bt.Body))</div>
+                                                }
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid ContentId { get; set; }
+
+    ContentDetailDto? _content;
+    ContentWithSectionsDto? _withSections;
+    List<SectionDto>? _sections;
+    ContentDetailTranslationDto? _activeTrans;
+    List<string> _langs = [];
+    string _lang = "tr";
+    string _viewMode = "desktop";
+    string _previewType = "draft";
+    bool _loading = true;
+    string? _error;
+    string _subtitle = "";
+
+    string StatusBadgeCss => _content?.Status switch
+    {
+        "Published" => "bg-success",
+        "Draft" => "bg-warning text-dark",
+        "Archived" => "bg-secondary",
+        "PendingApproval" => "bg-info",
+        _ => "bg-light text-dark"
+    };
+
+    string FrameStyle => _viewMode == "mobile"
+        ? "width:390px;transition:width .3s"
+        : "width:100%;max-width:1200px;transition:width .3s";
+
+    string ContentFrameStyle => _viewMode == "mobile"
+        ? "height:680px;"
+        : "min-height:500px;";
+
+    string TitleFontSize => _viewMode == "mobile" ? "22px" : "32px";
+
+    string PublicUrl => $"https://example.com/{_lang}/{_content?.Slug}";
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        _loading = true; _error = null;
+        StateHasChanged();
+        try
+        {
+            var r1 = await ContentApiClient.GetContentByIdAsync(ContentId);
+            if (!r1.IsSuccess) { _error = r1.Error!.Message; return; }
+            _content = r1.Data!;
+            _langs = _content.Translations.Select(t => t.LanguageCode).Distinct().ToList();
+            if (_langs.Any()) _lang = _langs.First();
+            _subtitle = _content.Translations.FirstOrDefault()?.Title ?? _content.Slug;
+
+            var r2 = await ContentApiClient.GetContentWithSectionsAsync(ContentId);
+            if (r2.IsSuccess) _sections = r2.Data?.Sections;
+
+            RenderPreview();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    void SetView(string mode) { _viewMode = mode; }
+    void SetPreviewType(string type) { _previewType = type; }
+
+    void RenderPreview()
+    {
+        _activeTrans = _content?.Translations.FirstOrDefault(t => t.LanguageCode == _lang);
+    }
+
+    static string SanitizeBody(string? html)
+    {
+        if (string.IsNullOrEmpty(html)) return "";
+        // Basit sanitize — production'da IHtmlSanitizer kullanın
+        return html.Length > 3000 ? html[..3000] + "..." : html;
+    }
+}

@@ -1,0 +1,19 @@
+<div class="d-flex align-items-start justify-content-between mb-4">
+    <div>
+        <h4 class="fw-semibold mb-0">@Title</h4>
+        @if (!string.IsNullOrEmpty(Subtitle))
+        {
+            <small class="text-muted">@Subtitle</small>
+        }
+    </div>
+    @if (Actions is not null)
+    {
+        <div class="d-flex gap-2 flex-shrink-0">@Actions</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title    { get; set; } = "";
+    [Parameter] public string?         Subtitle { get; set; }
+    [Parameter] public RenderFragment? Actions  { get; set; }
+}

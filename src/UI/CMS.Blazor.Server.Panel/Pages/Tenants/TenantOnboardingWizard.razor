@@ -1,0 +1,790 @@
+@page "/tenants/new"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Yeni Tenant Oluştur — CMS</PageTitle>
+@if (!Guard.IsSuperAdmin && !AppState.Session.Can("tenants.manage"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<div class="wizard-shell">
+
+    <div class="d-flex align-items-center gap-3 mb-5">
+        <div class="wizard-logo-bubble">🏢</div>
+        <div>
+            <h1 style="font-size:1.4rem;font-weight:700;margin:0">Yeni Tenant Oluştur</h1>
+            <div class="text-muted small">Adım adım kurulum yaparak yeni bir tenant hazırlayın</div>
+        </div>
+        <a href="/tenants" class="btn btn-ghost btn-sm ms-auto">✕ İptal</a>
+    </div>
+
+    <!-- Adım göstergesi -->
+    <div class="wizard-steps mb-4">
+        @for (int i = 0; i < _steps.Length; i++)
+        {
+            var idx = i;
+            <div class="wizard-step @(_currentStep > idx ? "done" : "") @(_currentStep == idx ? "active" : "")">
+                <div class="step-bubble">
+                    @if (_currentStep > idx)
+                    {
+                        <span>✓</span>
+                    }
+                    else
+                    {
+
+                        <span>@(idx + 1)</span>
+                    }
+                </div>
+                <span class="step-label">@_steps[idx]</span>
+                @if (idx < _steps.Length - 1)
+                {
+                    <div class="step-connector"></div>
+                }
+            </div>
+        }
+    </div>
+
+    <!-- ── Adım 0: Temel Bilgiler ── -->
+    @if (_currentStep == 0)
+    {
+        <div class="wizard-card">
+            <div class="wizard-card-header">🏢 Temel Bilgiler</div>
+            <div class="wizard-card-body">
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label small fw-medium">Tenant Adı <span class="text-danger">*</span></label>
+                        <input @bind="_name" @bind:event="oninput" @bind:after="GenerateSubdomain"
+                               type="text" class="form-control form-control-sm"
+                               placeholder="Şirket veya proje adı" autofocus />
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label small fw-medium">Subdomain <span class="text-danger">*</span></label>
+                        <div class="input-group input-group-sm">
+                            <input @bind="_subdomain" @bind:event="oninput" @bind:after="CheckSubdomainAsync"
+                                   type="text"
+                                   class="form-control @(_subdomainValid == true ? "is-valid" : _subdomainValid == false ? "is-invalid" : "")"
+                                   placeholder="sirket-adi" />
+                            <span class="input-group-text" style="font-size:11px">.cms.app</span>
+                        </div>
+                        @if (_subdomainValid == true)
+                        {
+                            <div class="valid-feedback d-block" style="font-size:11px">✓ Subdomain kullanılabilir</div>
+                        }
+                        else if (_subdomainValid == false)
+                        {
+
+                            <div class="invalid-feedback d-block" style="font-size:11px">Bu subdomain kullanımda veya geçersiz</div>
+                        }
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label small fw-medium">Varsayılan Dil</label>
+                        <select class="form-select form-select-sm" @bind="_defaultLanguage">
+                            <option value="tr">Türkçe (tr)</option>
+                            <option value="en">İngilizce (en)</option>
+                            <option value="de">Almanca (de)</option>
+                            <option value="fr">Fransızca (fr)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- ── Adım 1: Marka ── -->
+    @if (_currentStep == 1)
+    {
+        <div class="wizard-card">
+            <div class="wizard-card-header">🎨 Marka & Domain</div>
+            <div class="wizard-card-body">
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label small fw-medium">Marka Rengi</label>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <input type="color" @bind="_brandColor"
+                                   style="width:40px;height:34px;border:none;padding:2px;border-radius:6px;cursor:pointer" />
+                            <input @bind="_brandColor" type="text" class="form-control form-control-sm"
+                                   style="font-family:monospace;width:110px" />
+                        </div>
+                        <div class="d-flex flex-wrap gap-1">
+                            @foreach (var c in new[] { "#6366f1", "#ec4899", "#22c55e", "#f59e0b", "#3b82f6", "#ef4444" })
+                            {
+                                var col = c;
+                                <button class="color-preset" style="background:@col" @onclick="() => _brandColor = col" title="@col"></button>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label small fw-medium">Özel Domain (opsiyonel)</label>
+                        <input @bind="_customDomain" type="text" class="form-control form-control-sm"
+                               placeholder="cms.sirketiniz.com" />
+                        <div class="form-text" style="font-size:11px">Özel domain için DNS CNAME kaydı gerekmektedir.</div>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <div class="small fw-semibold text-muted mb-2">CANLÍ ÖNİZLEME</div>
+                    <div class="branding-preview">
+                        <div class="bp-topbar">
+                            <div class="bp-logo">
+                                <div class="bp-logo-dot" style="background:@_brandColor">
+                                    @(string.IsNullOrEmpty(_name) ? "?" : _name[..1].ToUpper())
+                                </div>
+                                <span class="bp-tenant-name">@(string.IsNullOrEmpty(_name) ? "Tenant" : _name)</span>
+                            </div>
+                        </div>
+                        <div class="bp-nav">
+                            <div class="bp-nav-item" style="border-left-color:@_brandColor;color:@_brandColor;background:@_brandColor+" 15"">📄 İçerikler</div>
+                            <div class="bp-nav-item">📁 Sayfalar</div>
+                        </div>
+                        <button class="bp-btn" style="background:@_brandColor">+ Yeni İçerik</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- ── Adım 2: Plan ── -->
+    @if (_currentStep == 2)
+    {
+        <div class="wizard-card">
+            <div class="wizard-card-header">📦 Plan Seçimi</div>
+            <div class="wizard-card-body">
+                <div class="row g-3 mb-4">
+                    @foreach (var (key, label, price, features) in _plans)
+                    {
+                        var k = key;
+                        <div class="col-12 col-md-4">
+                            <div class="plan-card @(_plan == k ? "selected" : "")" @onclick="() => _plan = k">
+                                @if (k == "pro")
+                                {
+                                    <div class="plan-badge">⭐ POPÜLER</div>
+                                }
+                                <div class="plan-name">@label</div>
+                                <div class="plan-price">@price</div>
+                                <ul class="plan-features">
+                                    @foreach (var f in features)
+                                    {
+                                        <li>✓ @f</li>
+                                    }
+                                </ul>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- ── Adım 3: Özet & Tamamla ── -->
+    @if (_currentStep == 3)
+    {
+        @if (_provisioning)
+        {
+            <div class="wizard-card">
+                <div class="wizard-card-header">⚙️ Tenant Hazırlanıyor...</div>
+                <div class="wizard-card-body p-0">
+                    @foreach (var item in _checklist)
+                    {
+                        <div class="checklist-row @(item.Done ? "done" : "")">
+                            <div class="checklist-icon">
+                                @if (item.Done)
+                                {
+                                    <span style="color:#22c55e;font-size:14px">✓</span>
+                                }
+                                else if (item.Running)
+                                {
+
+                                    <div class="spinner-border spinner-border-sm" style="color:var(--accent);width:.8rem;height:.8rem"></div>
+                                }
+                                else
+                                {
+
+                                    <span style="color:var(--border)">○</span>
+                                }
+                            </div>
+                            <div>
+                                <div class="checklist-title">@item.Title</div>
+                                @if (!string.IsNullOrEmpty(item.Hint))
+                                {
+                                    <div class="checklist-hint">@item.Hint</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+                @if (_provisionError is not null)
+                {
+                    <div class="p-3">
+                        <div class="alert alert-danger py-2 small mb-0">@_provisionError</div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="wizard-card">
+                <div class="wizard-card-header">📋 Özet — Her şey doğru görünüyor mu?</div>
+                <div class="wizard-card-body">
+                    @foreach (var (label, val) in new[]{
+                        ("Tenant Adı", _name),
+                        ("Subdomain",  _subdomain + ".cms.app"),
+                        ("Varsayılan Dil", _defaultLanguage.ToUpper()),
+                        ("Özel Domain", string.IsNullOrEmpty(_customDomain) ? "—" : _customDomain),
+                        ("Plan", _plans.FirstOrDefault(p=>p.Key==_plan).Label ?? "Pro"),
+                        })
+                    {
+                        <div class="summary-row">
+                            <span class="summary-label">@label</span>
+                            <span class="summary-value">@val</span>
+                        </div>
+                    }
+                    <div class="summary-row">
+                        <span class="summary-label">Marka Rengi</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <div style="width:14px;height:14px;border-radius:4px;background:@_brandColor;border:1px solid var(--border)"></div>
+                            <span class="summary-value" style="font-family:monospace;font-size:11px">@_brandColor</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+    <!-- Footer -->
+    @if (!_provisioning || _provisionError is not null)
+    {
+        <div class="wizard-footer">
+            <div>
+                @if (_currentStep > 0)
+                {
+                    <button class="btn btn-ghost btn-sm" @onclick="() => _currentStep--" disabled="@_saving">← Geri</button>
+                }
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-muted" style="font-size:12px">@(_currentStep + 1) / @_steps.Length</span>
+                @if (_currentStep < _steps.Length - 1)
+                {
+                    <button class="btn btn-primary btn-sm" @onclick="NextStep" disabled="@(!CanAdvance)">İleri →</button>
+                }
+                else if (_provisionError is null)
+                {
+                    <button class="btn btn-success btn-sm d-flex align-items-center gap-2"
+                            @onclick="FinishAsync" disabled="@_saving">
+                        @if (_saving)
+                        {
+                            <span class="spinner-border spinner-border-sm" style="width:.75rem;height:.75rem"></span>
+                        }
+                        🚀 Tenant'ı Oluştur
+                    </button>
+                }
+                else
+                {
+                    <button class="btn btn-outline-danger btn-sm" @onclick="() => { _provisioning = false; _saving = false; }">
+                        ← Formu Düzelt
+                    </button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .wizard-shell {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 1.5rem 0;
+    }
+
+    .wizard-logo-bubble {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: var(--brand-light,#ede9fe);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.4rem;
+        flex-shrink: 0;
+    }
+
+    .wizard-steps {
+        display: flex;
+        align-items: center;
+    }
+
+    .wizard-step {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+    }
+
+    .step-bubble {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        border: 2px solid var(--border);
+        background: var(--surface-2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 600;
+        flex-shrink: 0;
+        transition: .2s;
+    }
+
+    .wizard-step.active .step-bubble {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+    }
+
+    .wizard-step.done .step-bubble {
+        border-color: #22c55e;
+        background: #22c55e;
+        color: #fff;
+    }
+
+    .step-label {
+        font-size: 12px;
+        font-weight: 500;
+        white-space: nowrap;
+        color: var(--text-3);
+    }
+
+    .wizard-step.active .step-label {
+        color: var(--accent);
+        font-weight: 600;
+    }
+
+    .wizard-step.done .step-label {
+        color: #15803d;
+    }
+
+    .step-connector {
+        flex: 1;
+        height: 2px;
+        background: var(--border);
+        margin: 0 8px;
+    }
+
+    .wizard-step.done + .wizard-step .step-connector, .wizard-step.done .step-connector {
+        background: #22c55e;
+    }
+
+    .wizard-card {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 1rem;
+    }
+
+    .wizard-card-header {
+        padding: .75rem 1.25rem;
+        background: var(--surface-1);
+        border-bottom: 1px solid var(--border);
+        font-weight: 600;
+        font-size: 13px;
+    }
+
+    .wizard-card-body {
+        padding: 1.25rem;
+    }
+
+    .wizard-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border);
+        margin-top: .5rem;
+    }
+
+    .plan-card {
+        border: 2px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem;
+        cursor: pointer;
+        transition: .15s;
+        position: relative;
+        height: 100%;
+    }
+
+        .plan-card:hover {
+            border-color: var(--accent);
+        }
+
+        .plan-card.selected {
+            border-color: var(--accent);
+            background: var(--brand-light,#ede9fe);
+        }
+
+    .plan-badge {
+        position: absolute;
+        top: -9px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--accent);
+        color: #fff;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 20px;
+        white-space: nowrap;
+    }
+
+    .plan-name {
+        font-weight: 700;
+        font-size: 14px;
+        margin-bottom: 2px;
+    }
+
+    .plan-price {
+        font-size: 11px;
+        color: var(--text-3);
+        margin-bottom: .75rem;
+    }
+
+    .plan-features {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        font-size: 11px;
+        color: var(--text-2);
+    }
+
+        .plan-features li {
+            margin-bottom: 3px;
+        }
+
+    .summary-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: .5rem 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+    }
+
+        .summary-row:last-child {
+            border-bottom: none;
+        }
+
+    .summary-label {
+        color: var(--text-3);
+        font-size: 12px;
+    }
+
+    .summary-value {
+        font-weight: 500;
+    }
+
+    .checklist-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: .65rem 1rem;
+        border-bottom: 1px solid var(--border);
+        font-size: 12px;
+        transition: .2s;
+    }
+
+        .checklist-row:last-child {
+            border-bottom: none;
+        }
+
+        .checklist-row.done .checklist-title {
+            text-decoration: line-through;
+            opacity: .6;
+        }
+
+    .checklist-icon {
+        width: 20px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .checklist-title {
+        font-weight: 500;
+    }
+
+    .checklist-hint {
+        color: var(--text-4,#9ca3af);
+        font-size: 11px;
+    }
+
+    .branding-preview {
+        background: #f8f9fb;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px;
+    }
+
+    .bp-topbar {
+        display: flex;
+        align-items: center;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #e2e8f0;
+        margin-bottom: 8px;
+    }
+
+    .bp-logo {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .bp-logo-dot {
+        width: 22px;
+        height: 22px;
+        border-radius: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .bp-tenant-name {
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .bp-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        margin-bottom: 12px;
+    }
+
+    .bp-nav-item {
+        font-size: 10px;
+        padding: 4px 8px;
+        border-radius: 5px;
+        border-left: 2px solid transparent;
+        color: #6b7280;
+    }
+
+    .bp-btn {
+        font-size: 10px;
+        color: #fff;
+        padding: 4px 12px;
+        border-radius: 5px;
+        font-weight: 500;
+        border: none;
+        cursor: pointer;
+    }
+
+    .color-preset {
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        border: 2px solid transparent;
+        cursor: pointer;
+        padding: 0;
+        transition: .1s;
+    }
+
+        .color-preset:hover {
+            transform: scale(1.2);
+        }
+</style>
+
+@code {
+    int _currentStep;
+    bool _saving, _provisioning;
+    bool? _subdomainValid;
+    System.Threading.CancellationTokenSource? _cts;
+    string? _provisionError;
+    string _search = "";
+
+    string _name = "", _subdomain = "", _defaultLanguage = "tr",
+           _brandColor = "#6366f1", _customDomain = "", _plan = "pro";
+
+    readonly string[] _steps = ["Temel Bilgiler", "Marka & Domain", "Plan Seçimi", "Özet & Tamamla"];
+
+    readonly (string Key, string Label, string Price, string[] Features)[] _plans =
+    [
+        ("starter",    "Starter",    "Ücretsiz",   ["5 İçerik Türü","1 Dil","2 Kullanıcı","1 GB"]),
+        ("pro",        "Pro",        "$49 / ay",   ["Sınırsız Tür","5 Dil","25 Kullanıcı","50 GB"]),
+        ("enterprise", "Enterprise", "Fiyat İste", ["Her şey dahil","Özel Domain","SSO","SLA"]),
+    ];
+
+    readonly List<ChecklistItem> _checklist =
+    [
+        new("Tenant kaydı oluşturuluyor",        ""),
+        new("Varsayılan roller oluşturuluyor",   "Admin, Editor, Viewer"),
+        new("Varsayılan izinler atanıyor",       "Rol bazlı izin seti"),
+        new("Dil yapılandırılıyor",              ""),
+        new("Ana sayfa oluşturuluyor",           "/ rotası"),
+        new("Navigasyon menüsü hazırlanıyor",    "Ana menü"),
+        new("Hazır! 🎉",                         ""),
+    ];
+
+    bool CanAdvance => _currentStep switch
+    {
+        0 => !string.IsNullOrWhiteSpace(_name) && _subdomainValid == true,
+        1 => true,
+        2 => !string.IsNullOrEmpty(_plan),
+        _ => true,
+    };
+
+    void NextStep() { if (CanAdvance) _currentStep++; }
+
+    void GenerateSubdomain()
+    {
+        if (string.IsNullOrWhiteSpace(_name)) return;
+        _subdomain = System.Text.RegularExpressions.Regex
+            .Replace(_name.ToLower().Trim(), @"[^a-z0-9]", "-")
+            .Trim('-');
+        _subdomainValid = null;
+        _ = CheckSubdomainAsync();
+    }
+
+    async Task CheckSubdomainAsync()
+    {
+        if (_subdomain.Length < 3) { _subdomainValid = false; return; }
+        if (!System.Text.RegularExpressions.Regex.IsMatch(_subdomain, @"^[a-z0-9][a-z0-9-]+[a-z0-9]$"))
+        { _subdomainValid = false; return; }
+
+        _cts?.Cancel();
+        _cts = new();
+        try
+        {
+            await Task.Delay(500, _cts.Token);
+            // Real: GET api/tenants/check-subdomain?value=_subdomain
+            // Simulated: always true for valid format
+            _subdomainValid = true;
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    async Task FinishAsync()
+    {
+        _saving = true; _provisioning = true; _provisionError = null;
+        StateHasChanged();
+        try
+        {
+            var req = new TenantProvisionRequest(
+                Name: _name,
+                Subdomain: _subdomain,
+                Languages: [_defaultLanguage],
+                DefaultLanguage: _defaultLanguage,
+                AdminEmail: null,
+                AdminRoleIds: null,
+                CreateDefaultContent: true,
+                CreateDefaultNavigation: true,
+                Plan: _plan,
+                BrandColor: _brandColor);
+
+            var r = await ProvisionApiClient.ProvisionTenantAsync(req);
+            if (!r.IsSuccess)
+            {
+                _provisionError = r.Error?.Message ?? "Tenant oluşturulamadı.";
+                Toast.Error(_provisionError);
+                _provisioning = false;
+                _saving = false;
+                return;
+            }
+
+            await PollAsync(r.Data!.TenantId);
+        }
+        catch (Exception ex)
+        {
+            _provisionError = ex.Message;
+            Toast.Error(ex.Message);
+            _provisioning = false;
+            _saving = false;
+        }
+    }
+
+    async Task PollAsync(Guid tenantId)
+    {
+        var stepMap = new Dictionary<string, int>
+        {
+            ["tenant_created"] = 0,
+            ["roles"] = 1,
+            ["permissions"] = 2,
+            ["language"] = 3,
+            ["homepage"] = 4,
+            ["navigation"] = 5,
+        };
+
+        for (int i = 0; i < 30; i++)   // max 60 sn
+        {
+            await Task.Delay(2000);
+            var s = await ProvisionApiClient.GetProvisioningStatusAsync(tenantId);
+            if (!s.IsSuccess) continue;
+
+            foreach (var (key, idx) in stepMap)
+            {
+                if (s.Data!.CompletedSteps.Contains(key))
+                {
+                    _checklist[idx].Done = true; _checklist[idx].Running = false;
+                }
+                else if (s.Data.PendingSteps.Contains(key))
+                {
+                    _checklist[idx].Running = true;
+                }
+            }
+            StateHasChanged();
+
+            if (s.Data!.Status == TenantStatus.Active)
+            {
+                _checklist[6].Done = true; StateHasChanged();
+                await Task.Delay(800);
+                Toast.Success($"🎉 \"{_name}\" tenant'ı hazır!");
+                Nav.NavigateTo($"/tenants/{tenantId}");
+                return;
+            }
+            if (s.Data.Status == TenantStatus.ProvisionFailed)
+            {
+                _provisionError = s.Data.FailureReason ?? "Provisioning başarısız.";
+                Toast.Error(_provisionError);
+                _provisioning = false; _saving = false;
+                return;
+            }
+        }
+
+        _provisionError = "Zaman aşımı. Tenant detay sayfasından durumu kontrol edin.";
+        Toast.Warning(_provisionError);
+        _provisioning = false; _saving = false;
+    }
+
+    sealed class ChecklistItem(string title, string hint)
+    {
+        public string Title { get; } = title;
+        public string Hint { get; } = hint;
+        public bool Done { get; set; }
+        public bool Running { get; set; }
+    }
+}

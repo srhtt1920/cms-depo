@@ -1,0 +1,127 @@
+﻿@page "/seo"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>SEO & Sitemap — CMS</PageTitle>
+@if (!AppState.Session.Can("content.read"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+
+<PageHeader Title="SEO & Sitemap" />
+
+<div class="row g-3">
+    <!-- Sitemap -->
+    <div class="col-12 col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent py-2">
+                <strong style="font-size:13px">Sitemap.xml</strong>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted">
+                    Tenant'a ait tüm yayındaki içeriklerin sitemap'i. Hreflang alternate linkleri dahildir.
+                </p>
+                <div class="d-flex gap-2">
+                    <a href="/api/seo/sitemap.xml" target="_blank" class="btn btn-sm btn-primary">
+                        Sitemap.xml Görüntüle
+                    </a>
+                </div>
+                <div class="mt-3 p-2 rounded" style="background:var(--surface-1);font-size:11px;font-family:monospace">
+                    GET /api/seo/sitemap.xml<br />
+                    Cache-Control: public, max-age=3600
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Meta sorgusu -->
+    <div class="col-12 col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent py-2">
+                <strong style="font-size:13px">İçerik Meta Test</strong>
+            </div>
+            <div class="card-body">
+                <div class="mb-2 d-flex gap-2">
+                    <input type="text" class="form-control form-control-sm"
+                           placeholder="slug (örn: homepage-hero)"
+                           @bind="_slug" />
+                    <select class="form-select form-select-sm" style="max-width:80px" @bind="_lang">
+                        <option>tr</option>
+                        <option>en</option>
+                        <option>de</option>
+                        <option>es</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="TestMeta">Test</button>
+                </div>
+
+                @if (_meta is not null)
+                {
+                    <div class="p-2 rounded border" style="font-size:12px">
+                        <div><strong>Title:</strong> @_meta.Title</div>
+                        <div><strong>Description:</strong> @_meta.Description</div>
+                        @if (_meta.OgImageUrl is not null)
+                        {
+                            <div><strong>OG Image:</strong> @_meta.OgImageUrl</div>
+                        }
+                        <div><strong>Robots:</strong> @_meta.Robots</div>
+                        <div class="mt-2"><strong>Hreflang:</strong></div>
+                        @foreach (var h in _meta.HreflangAlternates)
+                        {
+                            <div class="mono" style="font-size:10px">@h.HrefLang → @h.Href</div>
+                        }
+                        @if (_meta.StructuredDataJson is not null)
+                        {
+                            <details class="mt-2">
+                                <summary class="small" style="cursor:pointer">JSON-LD</summary>
+                                <pre style="font-size:10px;overflow:auto;max-height:150px">@_meta.StructuredDataJson</pre>
+                            </details>
+                        }
+                    </div>
+                }
+                @if (_metaError is not null)
+                {
+                    <div class="alert alert-danger py-1 small mt-2">@_metaError</div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    string _slug = "", _lang = "tr";
+    ContentMetaDto? _meta;
+    string? _metaError;
+    string _search = "";
+    async Task TestMeta()
+    {
+        _meta = null; _metaError = null;
+        if (string.IsNullOrWhiteSpace(_slug)) return;
+        var r = await SeoApiClient.GetContentMetaAsync(_slug, _lang);
+        if (r.IsSuccess) _meta = r.Data;
+        else _metaError = r.Error?.Message;
+    }
+}

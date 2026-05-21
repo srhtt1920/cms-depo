@@ -1,0 +1,290 @@
+﻿@if (_loading)
+{
+    <span class="badge bg-secondary" style="font-size:10px">⟳</span>
+}
+else if (_lock is null || !_lock.IsLocked)
+{
+    @if (Guard.CanLock)
+    {
+        <button class="btn btn-link p-0 text-muted lock-badge-btn"
+                style="font-size:11px"
+                title="Bu içeriği kilitle"
+                @onclick="() => _modal = true">
+            🔓 Kilitle
+        </button>
+    }
+}
+else
+{
+    <!-- Kilitli durum -->
+    <div class="d-flex align-items-center gap-1">
+        <span class="badge @LockCss" style="font-size:10px;cursor:default"
+              title="@LockTooltip">
+            🔒 @LockLabel
+        </span>
+        @if (Guard.CanEditLocked(_lock))
+        {
+            <button class="btn btn-link p-0"
+                    style="font-size:10px;color:var(--text-3)"
+                    title="Kilidi aç"
+                    @onclick="() => _modal = true">
+                Kilidi Aç
+            </button>
+        }
+    </div>
+}
+
+<!-- Lock Modal -->
+@if (_modal)
+{
+    <div class="modal-backdrop-blur" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1040"
+         @onclick="() => { _modal = false; ResetForm(); }"></div>
+    <div class="modal fade show d-block" tabindex="-1" style="z-index:1050">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-0 pb-1">
+                    <h6 class="modal-title fw-semibold">
+                        @if (_lock?.IsLocked == true)
+                        {
+                            <span>🔓 Kilidi Aç</span>
+                        }
+                        else
+                        {
+                            <span>🔒 İçeriği Kilitle</span>
+                        }
+                    </h6>
+                    <button class="btn-close" @onclick="() => { _modal = false; ResetForm(); }"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_lock?.IsLocked == true)
+                    {
+                        <!-- Kilidi aç -->
+                        <div class="alert alert-info py-2 small mb-3">
+                            Bu işlem kilidi kaldıracak. Yetkili kullanıcılar içeriği tekrar düzenleyebilecek.
+                        </div>
+                        @if (_lock.RequiresSuperAdmin && !Guard.IsSuperAdmin)
+                        {
+                            <div class="alert alert-danger py-2 small">
+                                Bu kilit yalnızca <strong>SuperAdmin</strong> tarafından açılabilir.
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <!-- Kilitle -->
+                        <div class="mb-3">
+                            <label class="form-label small fw-medium">Kilit Türü *</label>
+                            <select class="form-select form-select-sm" @bind="_lockType">
+                                <option value="Full">Tam Kilit — Hiçbir şey düzenlenemez</option>
+                                <option value="Translations">Çeviri Kilidi — Çeviriler düzenlenemez</option>
+                                <option value="Structure">Yapı Kilidi — Bölüm/blok eklenemez</option>
+                                <option value="Publish">Yayın Kilidi — Yayın durumu değiştirilemez</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-medium">Kilit Sebebi</label>
+                            <input class="form-control form-control-sm" @bind="_lockReason"
+                                   placeholder="ör: Hukuki inceleme süreci, Onay bekleniyor..." />
+                        </div>
+                        @if (Guard.IsSuperAdmin)
+                        {
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox"
+                                       id="chkSuperAdminLock" @bind="_requiresSuperAdmin" />
+                                <label class="form-check-label small" for="chkSuperAdminLock">
+                                    Yalnızca SuperAdmin açabilir
+                                </label>
+                            </div>
+                        }
+
+                        <!-- Önizleme -->
+                        <div class="border rounded-2 p-2 mt-2" style="background:var(--surface-1)">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge @LockTypeCss(_lockType)" style="font-size:10px">
+                                    🔒 @_lockType
+                                </span>
+                                <small class="text-muted">@LockTypeDesc(_lockType)</small>
+                            </div>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(_formError))
+                    {
+                        <div class="alert alert-danger py-1 small mt-2">@_formError</div>
+                    }
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button class="btn btn-sm btn-outline-secondary"
+                            @onclick="() => { _modal = false; ResetForm(); }">
+                        İptal
+                    </button>
+                    @if (_lock?.IsLocked == true)
+                    {
+                        <button class="btn btn-sm btn-success"
+                                @onclick="UnlockAsync"
+                                disabled="@(_saving || (_lock.RequiresSuperAdmin && !Guard.IsSuperAdmin))">
+                            @if (_saving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Kilidi Aç
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm btn-warning"
+                                @onclick="LockAsync"
+                                disabled="@_saving">
+                            @if (_saving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Kilitle
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .lock-badge-btn {
+        line-height: 1;
+    }
+
+        .lock-badge-btn:hover {
+            opacity: .8;
+        }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public Guid EntityId { get; set; }
+    [Parameter] public string EntityType { get; set; } = "Content"; // "Content" | "Page"
+    [Parameter] public EventCallback OnLockChanged { get; set; }
+
+    bool _loading = true, _saving, _modal;
+    ContentLockDto? _lock;
+    string _lockType = "Full";
+    string? _lockReason;
+    bool _requiresSuperAdmin;
+    string? _formError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await RefreshLock();
+    }
+
+    async Task RefreshLock()
+    {
+        _loading = true;
+        var r = EntityType == "Page"
+            ? await PageApiClient.GetPageLockAsync(EntityId)
+            : await ContentApiClient.GetContentLockAsync(EntityId);
+        if (r.IsSuccess) _lock = r.Data;
+        _loading = false;
+        StateHasChanged();
+    }
+
+    async Task LockAsync()
+    {
+        _formError = null;
+        _saving = true;
+
+        var req = new SetContentLockRequest(true, _lockType, _lockReason, _requiresSuperAdmin);
+        var r = EntityType == "Page"
+            ? await PageApiClient.SetPageLockAsync(EntityId, req)
+            : await ContentApiClient.SetContentLockAsync(EntityId, req);
+
+        _saving = false;
+        if (r.IsSuccess)
+        {
+            _modal = false;
+            ResetForm();
+            await RefreshLock();
+            await OnLockChanged.InvokeAsync();
+        }
+        else
+        {
+            _formError = r.Error?.Message ?? "Kilit oluşturulamadı.";
+        }
+    }
+
+    async Task UnlockAsync()
+    {
+        if (_lock?.RequiresSuperAdmin == true && !Guard.IsSuperAdmin) return;
+        _saving = true;
+
+        var req = new SetContentLockRequest(false, _lockType, null, false);
+        var r = EntityType == "Page"
+            ? await PageApiClient.SetPageLockAsync(EntityId, req)
+            : await ContentApiClient.SetContentLockAsync(EntityId, req);
+
+        _saving = false;
+        if (r.IsSuccess)
+        {
+            _modal = false;
+            await RefreshLock();
+            await OnLockChanged.InvokeAsync();
+        }
+        else
+        {
+            _formError = r.Error?.Message ?? "Kilit açılamadı.";
+        }
+    }
+
+    void ResetForm()
+    {
+        _lockType = "Full";
+        _lockReason = null;
+        _requiresSuperAdmin = false;
+        _formError = null;
+    }
+
+    // ── Label / CSS helpers ──────────────────────────────────────────
+
+    string LockLabel => _lock?.LockType switch
+    {
+        "Full" => "Tam Kilitli",
+        "Translations" => "Çeviri Kilitli",
+        "Structure" => "Yapı Kilitli",
+        "Publish" => "Yayın Kilitli",
+        _ => "Kilitli",
+    };
+
+    string LockCss => (_lock?.RequiresSuperAdmin == true)
+        ? "bg-danger"
+        : "bg-warning text-dark";
+
+    string LockTooltip
+    {
+        get
+        {
+            if (_lock is null) return "";
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(_lock.LockedByEmail)) parts.Add($"Kilitleyen: {_lock.LockedByEmail}");
+            if (_lock.LockedAt.HasValue) parts.Add(_lock.LockedAt.Value.ToString("dd MMM HH:mm"));
+            if (!string.IsNullOrEmpty(_lock.LockReason)) parts.Add(_lock.LockReason);
+            if (_lock.RequiresSuperAdmin) parts.Add("Yalnızca SuperAdmin açabilir");
+            return string.Join(" · ", parts);
+        }
+    }
+
+    static string LockTypeCss(string t) => t switch
+    {
+        "Full" => "bg-danger",
+        "Translations" => "bg-warning text-dark",
+        "Structure" => "bg-info text-dark",
+        "Publish" => "bg-secondary",
+        _ => "bg-secondary",
+    };
+
+    static string LockTypeDesc(string t) => t switch
+    {
+        "Full" => "Hiçbir şey düzenlenemez",
+        "Translations" => "Yalnızca çeviriler kilitli",
+        "Structure" => "Bölüm/blok ekleme kilitli",
+        "Publish" => "Yayın durumu kilitli",
+        _ => "",
+    };
+}

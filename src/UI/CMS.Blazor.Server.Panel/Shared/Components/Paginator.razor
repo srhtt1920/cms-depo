@@ -1,0 +1,102 @@
+﻿@if (TotalPages <= 1) { return; }
+
+<div class="cms-paginator">
+    <div class="paginator-info">
+        @StartItem–@EndItem / @TotalCount kayıt
+    </div>
+
+    <div class="paginator-controls">
+        <!-- İlk sayfa -->
+        <button class="paginator-btn" disabled="@(CurrentPage <= 0)"
+                @onclick="() => OnPageChange.InvokeAsync(0)" title="İlk sayfa">
+            <SvgIcon Name="icon-chevron-left" Size="12" />
+            <SvgIcon Name="icon-chevron-left" Size="12" Style="margin-left:-6px" />
+        </button>
+
+        <!-- Önceki -->
+        <button class="paginator-btn" disabled="@(CurrentPage <= 0)"
+                @onclick="() => OnPageChange.InvokeAsync(CurrentPage - 1)" title="Önceki">
+            <SvgIcon Name="icon-chevron-left" Size="13" />
+        </button>
+
+        <!-- Sayfa numaraları -->
+        @foreach (var p in PageNumbers)
+        {
+            @if (p == -1)
+            {
+                <span class="paginator-ellipsis">…</span>
+            }
+            else
+            {
+                <button class="paginator-btn @(p == CurrentPage ? "active" : "")"
+                        @onclick="() => OnPageChange.InvokeAsync(p)">
+                    @(p + 1)
+                </button>
+            }
+        }
+
+        <!-- Sonraki -->
+        <button class="paginator-btn" disabled="@(CurrentPage >= TotalPages - 1)"
+                @onclick="() => OnPageChange.InvokeAsync(CurrentPage + 1)" title="Sonraki">
+            <SvgIcon Name="icon-chevron-right" Size="13" />
+        </button>
+
+        <!-- Son sayfa -->
+        <button class="paginator-btn" disabled="@(CurrentPage >= TotalPages - 1)"
+                @onclick="() => OnPageChange.InvokeAsync(TotalPages - 1)" title="Son sayfa">
+            <SvgIcon Name="icon-chevron-right" Size="12" />
+            <SvgIcon Name="icon-chevron-right" Size="12" Style="margin-left:-6px" />
+        </button>
+    </div>
+
+    <!-- Sayfa başına kayıt -->
+    <div class="paginator-size">
+        <select class="paginator-select" @onchange="OnSizeChangedAsync">
+            @foreach (var s in new[] { 10, 25, 50, 100 })
+            {
+                <option value="@s" selected="@(PageSize == s)">@s / sayfa</option>
+            }
+        </select>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public int CurrentPage { get; set; }
+    [Parameter, EditorRequired] public int TotalCount { get; set; }
+    [Parameter, EditorRequired] public int PageSize { get; set; }
+    [Parameter] public EventCallback<int> OnPageChange { get; set; }
+    [Parameter] public EventCallback<int> OnPageSizeChange { get; set; }
+
+    int TotalPages => TotalCount == 0 ? 1 : (int)Math.Ceiling(TotalCount / (double)PageSize);
+    int StartItem => TotalCount == 0 ? 0 : CurrentPage * PageSize + 1;
+    int EndItem => Math.Min((CurrentPage + 1) * PageSize, TotalCount);
+
+    IEnumerable<int> PageNumbers
+    {
+        get
+        {
+            // Akıllı sayfa numarası listesi: [0,1,2,...ellipsis...,n-2,n-1]
+            var total = TotalPages;
+            var cur = CurrentPage;
+            if (total <= 7) return Enumerable.Range(0, total);
+
+            var pages = new List<int> { 0 };
+
+            if (cur > 3) pages.Add(-1); // ellipsis
+
+            for (var i = Math.Max(1, cur - 1); i <= Math.Min(total - 2, cur + 1); i++)
+                pages.Add(i);
+
+            if (cur < total - 4) pages.Add(-1); // ellipsis
+
+            pages.Add(total - 1);
+            return pages;
+        }
+    }
+
+    async Task OnSizeChangedAsync(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var s))
+            await OnPageSizeChange.InvokeAsync(s);
+    }
+}

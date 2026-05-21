@@ -1,0 +1,207 @@
+@page "/invite/{Token}"
+@layout LoginLayout
+
+<PageTitle>Daveti Kabul Et — CMS</PageTitle>
+
+<div class="auth-card">
+    @if (_loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border" style="color:var(--accent)"></div>
+            <div class="small text-muted mt-2">Davet bilgileri yükleniyor...</div>
+        </div>
+    }
+    else if (_loadError is not null)
+    {
+        <div class="text-center py-4">
+            <div style="font-size:3rem;margin-bottom:12px">❌</div>
+            <h5 class="fw-semibold">Davet Bulunamadı</h5>
+            <p class="text-muted small mb-3">@_loadError</p>
+            <a href="/login" class="btn btn-outline-secondary btn-sm">Giriş Yap</a>
+        </div>
+    }
+    else if (_done)
+    {
+        <div class="text-center py-4">
+            <div style="font-size:3rem;margin-bottom:12px">🎉</div>
+            <h5 class="fw-semibold text-success">Hesabınız Hazır!</h5>
+            <p class="text-muted small mb-3">
+                <strong>@(_invite?.TenantName)</strong> ekibine katıldınız.
+                Şimdi giriş yapabilirsiniz.
+            </p>
+            <a href="/login" class="btn btn-primary btn-sm">Giriş Yap →</a>
+        </div>
+    }
+    else if (_invite is not null)
+    {
+        <!-- Tenant bilgisi -->
+        <div class="text-center mb-4">
+            <div class="auth-logo-bubble mb-3">
+                @_invite.TenantName[..1].ToUpper()
+            </div>
+            <h5 class="fw-bold mb-1">@_invite.TenantName'e davet edildiniz</h5>
+            <p class="text-muted small">
+                <strong>@_invite.InvitedByEmail</strong> sizi davet etti.
+            </p>
+            <div class="d-flex justify-content-center gap-1 mb-2">
+                @foreach (var r in _invite.Roles)
+                {
+                    <span class="badge" style="background:var(--accent);font-size:10px">@r</span>
+                }
+            </div>
+            @if (_invite.ExpiresAt < DateTime.UtcNow)
+            {
+                <div class="alert alert-warning py-2 small">
+                    ⚠️ Bu davet <strong>@_invite.ExpiresAt.ToLocalTime().ToString("dd MMM yyyy")</strong> tarihinde sona erdi.
+                </div>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(_formError))
+        {
+            <div class="alert alert-danger py-2 small mb-3">@_formError</div>
+        }
+
+        <!-- Form -->
+        <div class="mb-3">
+            <label class="form-label small fw-medium">Ad Soyad (opsiyonel)</label>
+            <input @bind="_displayName" type="text" class="form-control form-control-sm"
+                   placeholder="Görünen adınız" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label small fw-medium">E-posta</label>
+            <input type="email" class="form-control form-control-sm"
+                   value="@_invite.Email" readonly
+                   style="background:var(--surface-2);color:var(--text-3)" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label small fw-medium">Şifre <span class="text-danger">*</span></label>
+            <div class="input-group input-group-sm">
+                <input @bind="_password" @bind:event="oninput" @bind:after="CalcStrength"
+                       type="@(_showPw?"text":"password")"
+                       class="form-control" placeholder="En az 8 karakter" autocomplete="new-password" />
+                <button class="btn btn-outline-secondary" type="button"
+                        @onclick="()=>_showPw=!_showPw">
+                    @(_showPw?"🙈":"👁️")
+                </button>
+            </div>
+            @if (!string.IsNullOrEmpty(_password))
+            {
+                <div class="mt-1">
+                    <div class="d-flex gap-1 mb-1">
+                        @for (int i = 0; i < 4; i++)
+                        {
+                            var idx = i;
+                            <div style="height:3px;flex:1;border-radius:2px;
+                                        background:@(idx<_strength?StrengthColor:"var(--border)")"></div>
+                        }
+                    </div>
+                    <div style="font-size:10px;color:@StrengthColor">@StrengthLabel</div>
+                </div>
+            }
+        </div>
+        <div class="mb-4">
+            <label class="form-label small fw-medium">Şifre Tekrar <span class="text-danger">*</span></label>
+            <input @bind="_confirmPassword" type="password"
+                   class="form-control form-control-sm @(PwMismatch?"is-invalid":"")"
+                   placeholder="Şifreyi tekrar girin" autocomplete="new-password" />
+            @if (PwMismatch) { <div class="invalid-feedback">Şifreler eşleşmiyor.</div> }
+        </div>
+
+        <button class="btn btn-primary w-100 btn-sm d-flex align-items-center justify-content-center gap-2"
+                @onclick="AcceptAsync"
+                disabled="@(_saving || PwMismatch || _strength < 2 || string.IsNullOrEmpty(_password))">
+            @if (_saving) { <span class="spinner-border spinner-border-sm"></span> }
+            ✅ Hesabımı Oluştur
+        </button>
+
+        <div class="text-center mt-3">
+            <button class="btn btn-link btn-sm text-muted" @onclick="RejectAsync" disabled="@_saving">
+                Daveti reddet
+            </button>
+        </div>
+    }
+</div>
+
+<style>
+    .auth-logo-bubble {
+        width: 56px; height: 56px; border-radius: 14px;
+        background: var(--accent); color: #fff;
+        font-size: 1.5rem; font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+        margin: auto;
+    }
+</style>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    InviteDto? _invite;
+    bool _loading = true, _saving, _showPw, _done;
+    string? _loadError, _formError;
+    string _displayName = "", _password = "", _confirmPassword = "";
+    int _strength;
+
+    bool PwMismatch => !string.IsNullOrEmpty(_confirmPassword) && _password != _confirmPassword;
+    string StrengthColor => _strength switch { 1=>"#ef4444", 2=>"#f59e0b", 3=>"#3b82f6", _=>"#22c55e" };
+    string StrengthLabel => _strength switch { 1=>"Çok zayıf", 2=>"Zayıf", 3=>"Orta", _=>"Güçlü" };
+
+    void CalcStrength()
+    {
+        if (string.IsNullOrEmpty(_password)) { _strength = 0; return; }
+        int s = 0;
+        if (_password.Length >= 8) s++;
+        if (_password.Any(char.IsUpper)) s++;
+        if (_password.Any(char.IsDigit)) s++;
+        if (_password.Any(c => !char.IsLetterOrDigit(c))) s++;
+        _strength = s;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            var r = await InviteApiClient.GetInviteByIdAsync(Guid.Empty);
+            // Token-based: GET api/users/invites/{token}
+            // Real endpoint uses token string not Guid - use direct call
+            var resp = await InviteApiClient.GetInviteByTokenAsync(Token);
+            if (!resp.IsSuccess) { _loadError = resp.Error?.Message ?? "Davet bulunamadı veya süresi dolmuş."; return; }
+            _invite = resp.Data;
+        }
+        catch (Exception ex) { _loadError = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    async Task AcceptAsync()
+    {
+        if (string.IsNullOrEmpty(_password) || PwMismatch || _strength < 2) return;
+        _saving = true; _formError = null;
+        try
+        {
+            var req = new AcceptInviteRequest(
+                Token:           Token,
+                Password:        _password,
+                ConfirmPassword: _confirmPassword,
+                DisplayName:     string.IsNullOrWhiteSpace(_displayName) ? null : _displayName);
+
+            var r = await InviteApiClient.AcceptInviteAsync(req);
+            if (r.IsSuccess) { _done = true; }
+            else { _formError = r.Error?.Message ?? "İşlem başarısız."; }
+        }
+        catch (Exception ex) { _formError = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    async Task RejectAsync()
+    {
+        _saving = true;
+        try
+        {
+            await InviteApiClient.RejectInviteAsync(Token);
+            Nav.NavigateTo("/login");
+        }
+        catch { Nav.NavigateTo("/login"); }
+        finally { _saving = false; }
+    }
+}

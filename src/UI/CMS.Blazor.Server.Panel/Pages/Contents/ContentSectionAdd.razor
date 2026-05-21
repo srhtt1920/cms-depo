@@ -1,0 +1,247 @@
+﻿@page "/contents/{ContentId:guid}/sections/add"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Section Ekle — CMS</PageTitle>
+@if (!AppState.Session.Can("content.edit"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Section Ekle</span>
+        <div class="dash-header-sep"></div>
+        <a href="/contents/@ContentId/edit" class="btn btn-outline-secondary btn-sm">‹ Geri</a>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="Save" isabled="@_saving">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+
+        <div class="input-group input-group-sm" style="width:200px">
+            <span class="input-group-text bg-transparent"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" /></svg></span>
+            <input @bind="_search" @bind:event="oninput" type="text" class="form-control" placeholder="Ara..." />
+        </div>
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger py-2 small mb-3">@_error</div>
+}
+
+<div class="row g-3 justify-content-center">
+    <div class="col-12 col-md-7 col-xl-6">
+
+        <!-- Section ayarları -->
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header border-0 py-3 px-4">
+                <span class="fw-semibold" style="font-size:13px">Section Bilgileri</span>
+            </div>
+            <div class="card-body px-4 pb-4 pt-0">
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Section Adı <span class="text-danger">*</span></label>
+                    <input @bind="_name" type="text" class="form-control"
+                           placeholder="örn: Hero, Hakkımızda, Galeri" />
+                    <div class="form-text">İç referans adı — kullanıcıya görünmez.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Sıra</label>
+                    <input @bind="_order" type="number" class="form-control form-control-sm"
+                           min="0" style="max-width:120px" />
+                    <div class="form-text">Küçük sayı önce gösterilir.</div>
+                </div>
+                <div class="mb-0">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="isVisible" @bind="_isVisible" />
+                        <label class="form-check-label small" for="isVisible">
+                            Görünür (aktif) olarak oluştur
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- İlk block ekle (opsiyonel) -->
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header border-0 py-3 px-4 d-flex align-items-center justify-content-between">
+                <span class="fw-semibold" style="font-size:13px">İlk Block (Opsiyonel)</span>
+                <div class="form-check mb-0">
+                    <input class="form-check-input" type="checkbox" id="addBlock" @bind="_addInitialBlock" />
+                    <label class="form-check-label small" for="addBlock">Block ekle</label>
+                </div>
+            </div>
+            @if (_addInitialBlock)
+            {
+                <div class="card-body px-4 pb-4 pt-0">
+                    <div class="mb-3">
+                        <label class="form-label small fw-medium">Block Tipi <span class="text-danger">*</span></label>
+                        <div class="row g-2">
+                            @foreach (var bt in _blockTypes)
+                            {
+                                <div class="col-6">
+                                    <div class="d-flex align-items-center gap-2 p-2 rounded"
+                                         style="border:2px solid @(_selectedBlockType == bt.Key ? "var(--accent)" : "var(--border)");
+                                                                                background:@(_selectedBlockType == bt.Key ? "rgba(99,102,241,.06)" : "var(--surface-2)");
+                                                                                cursor:pointer"
+                                         @onclick="() => _selectedBlockType = bt.Key">
+                                        <span class="badge @bt.Color" style="font-size:10px;min-width:48px">@bt.Key</span>
+                                        <span style="font-size:12px;color:var(--text-2)">@bt.Desc</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Block çeviri alanları (ilk dil için) -->
+                    @{
+                        var fields = FieldsFor(_selectedBlockType);
+                    }
+                    @if (fields.Contains("Title"))
+                    {
+                        <div class="mb-2">
+                            <label class="form-label small fw-medium">Başlık (TR)</label>
+                            <input @bind="_blockTitle" type="text" class="form-control form-control-sm" />
+                        </div>
+                    }
+                    @if (fields.Contains("Body"))
+                    {
+                        <div class="mb-2">
+                            <label class="form-label small fw-medium">İçerik (TR)</label>
+                            <textarea @bind="_blockBody" class="form-control form-control-sm" rows="4"></textarea>
+                        </div>
+                    }
+                    @if (fields.Contains("AltText"))
+                    {
+                        <div class="mb-2">
+                            <label class="form-label small fw-medium">Alt Metin (TR)</label>
+                            <input @bind="_blockAltText" type="text" class="form-control form-control-sm"
+                                   placeholder="Erişilebilirlik için..." />
+                        </div>
+                    }
+                    @if (fields.Contains("LinkText"))
+                    {
+                        <div class="mb-2">
+                            <label class="form-label small fw-medium">Link Metni (TR)</label>
+                            <input @bind="_blockLinkText" type="text" class="form-control form-control-sm" />
+                        </div>
+                    }
+                    <div class="mb-0">
+                        <label class="form-label small fw-medium">Settings (JSON)</label>
+                        <textarea @bind="_blockSettings" class="form-control form-control-sm font-monospace"
+                                  rows="3" placeholder='{"key":"value"}'></textarea>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Önizleme bilgi kutusu -->
+        <div class="p-3 rounded" style="background:var(--surface-2);border:1px solid var(--border)">
+            <div class="d-flex align-items-start gap-2">
+                <svg width="14" height="14" fill="var(--accent)" viewBox="0 0 16 16" class="mt-1 flex-shrink-0">
+                    <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z" />
+                </svg>
+                <div style="font-size:12px;color:var(--text-2)">
+                    Section oluşturulduktan sonra <strong>EditContent</strong> sayfasından her dil için block çevirileri ekleyebilirsiniz.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public Guid ContentId { get; set; }
+
+    string _name = "", _selectedBlockType = "Text", _blockSettings = "{}";
+    string? _blockTitle, _blockBody, _blockAltText, _blockLinkText;
+    int _order = 0;
+    bool _isVisible = true, _addInitialBlock, _saving;
+    string _error = "";
+
+    record BlockTypeDef(string Key, string Desc, string Color);
+    readonly BlockTypeDef[] _blockTypes =
+    [
+        new("Text",   "Metin içeriği",  "bg-primary"),
+        new("Image",  "Görsel/Medya",   "bg-success"),
+        new("Slider", "Slider/Banner",  "bg-info text-dark"),
+        new("Card",   "Kart bileşeni",  "bg-warning text-dark"),
+        new("Action", "CTA/Link",       "bg-danger"),
+        new("Custom", "Özel bileşen",   "bg-secondary"),
+    ];
+
+    async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_name)) { _error = "Section adı zorunlu."; return; }
+        _saving = true; _error = "";
+
+        var secR = await ContentApiClient.CreateSectionAsync(ContentId,
+            new CreateSectionRequest(_name, _order));
+
+        if (!secR.IsSuccess || secR.Data == Guid.Empty)
+        {
+            _error = secR.Error?.Message ?? "Section oluşturulamadı.";
+            _saving = false;
+            return;
+        }
+
+        var secId = secR.Data!;
+
+        if (_addInitialBlock)
+        {
+            // Block oluştur (blockType int enum ise API'ye göre map)
+            var blockTypeInt = _selectedBlockType switch
+            {
+                "Text" => 1,
+                "Image" => 2,
+                "Slider" => 3,
+                "Card" => 4,
+                "Action" => 5,
+                _ => 0
+            };
+
+            var blockR = await ContentApiClient.UpsertBlockAsync(ContentId, secId,
+                new UpsertBlockRequest(blockTypeInt, 1, true, _blockSettings));
+
+            if (blockR.IsSuccess && blockR.Data != Guid.Empty)
+            {
+                var blockId = blockR.Data!;
+                var fields = FieldsFor(_selectedBlockType);
+                var hasContent = (fields.Contains("Title") && !string.IsNullOrEmpty(_blockTitle))
+                    || (fields.Contains("Body") && !string.IsNullOrEmpty(_blockBody))
+                    || (fields.Contains("AltText") && !string.IsNullOrEmpty(_blockAltText))
+                    || (fields.Contains("LinkText") && !string.IsNullOrEmpty(_blockLinkText));
+
+                if (hasContent)
+                {
+                    await ContentApiClient.UpsertBlockTranslationAsync(ContentId, secId, blockId,
+                        new UpsertBlockTranslationRequest("tr", _blockTitle, _blockBody, _blockAltText, _blockLinkText));
+                }
+            }
+        }
+
+        Nav.NavigateTo($"/contents/{ContentId}/edit");
+    }
+
+    static HashSet<string> FieldsFor(string t) => t switch
+    {
+        "Text" => ["Title", "Body"],
+        "Image" => ["AltText"],
+        "Slider" => ["Title"],
+        "Card" => ["Title", "Body"],
+        "Action" => ["LinkText"],
+        "Link" => ["LinkText"],
+        _ => []
+    };
+}

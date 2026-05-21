@@ -1,0 +1,329 @@
+﻿@page "/lock-dashboard"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Kilit Yönetimi — CMS</PageTitle>
+@if (AppState.Session.Can("content.manage_locks"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="Kilit Yönetimi" Subtitle="Aktif kilitler ve oturum takibi">
+    <Actions>
+        <button class="btn btn-outline-warning btn-sm" @onclick="CleanStaleLocksAsync" disabled="@_cleaning">
+            @if (_cleaning)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            🧹 Eskimiş Kilitleri Temizle
+        </button>
+        <button class="btn-ghost btn-icon" @onclick="LoadAsync" title="Yenile">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+            </svg>
+        </button>
+    </Actions>
+</PageHeader>
+
+<!-- KPI -->
+<div class="row g-2 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="ap-kpi" style="border-left-color:#ef4444">
+            <div class="ap-kpi-val">@_locks.Count(l => l.EntityType == "Content")</div>
+            <div class="ap-kpi-label">İçerik Kilidi</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="ap-kpi" style="border-left-color:#f59e0b">
+            <div class="ap-kpi-val">@_locks.Count(l => l.EntityType == "Page")</div>
+            <div class="ap-kpi-label">Sayfa Kilidi</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="ap-kpi" style="border-left-color:#8b5cf6">
+            <div class="ap-kpi-val">@_locks.Select(l => l.LockedByEmail).Distinct().Count()</div>
+            <div class="ap-kpi-label">Aktif Kullanıcı</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="ap-kpi" style="border-left-color:#6b7280">
+            <div class="ap-kpi-val">@StaleCount</div>
+            <div class="ap-kpi-label">Eskimiş Kilit</div>
+        </div>
+    </div>
+</div>
+
+
+
+<!-- Filtreler -->
+<div class="d-flex align-items-center gap-2 mb-3">
+    <div class="btn-group btn-group-sm">
+        <button class="btn @(_typeFilter == "" ? "btn-primary" : "btn-outline-secondary")"
+                @onclick='() => _typeFilter = ""'>
+            Tümü (@_locks.Count)
+        </button>
+        <button class="btn @(_typeFilter == "Content" ? "btn-primary" : "btn-outline-secondary")"
+                @onclick='() => _typeFilter = "Content"'>
+            İçerik
+        </button>
+        <button class="btn @(_typeFilter == "Page" ? "btn-primary" : "btn-outline-secondary")"
+                @onclick='() => _typeFilter = "Page"'>
+            Sayfa
+        </button>
+    </div>
+    <div class="btn-group btn-group-sm ms-2">
+        <button class="btn @(!_staleOnly ? "btn-outline-secondary" : "btn-warning")"
+                @onclick='() => _staleOnly = !_staleOnly'>
+            ⚠️ Yalnız Eskimiş
+        </button>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger py-2 small">
+        @_error
+        <button class="btn btn-link btn-sm" @onclick="LoadAsync">Tekrar dene</button>
+    </div>
+}
+else if (!FilteredLocks.Any())
+{
+    <div class="text-center py-5">
+        <div style="font-size:40px;margin-bottom:12px">🔓</div>
+        <div class="fw-semibold text-muted">Aktif kilit yok</div>
+        <div class="small text-muted mt-1">Tüm içerikler ve sayfalar düzenlenebilir.</div>
+    </div>
+}
+else
+{
+    <!-- Kullanıcıya göre gruplandır -->
+    @foreach (var group in FilteredLocks.GroupBy(l => l.LockedByEmail))
+    {
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center gap-2">
+                <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
+                     style="width:28px;height:28px;font-size:11px;background:var(--accent)">
+                    @group.Key[..1].ToUpper()
+                </div>
+                <span class="fw-semibold small">@group.Key</span>
+                <span class="badge bg-secondary ms-1" style="font-size:10px">@group.Count() kilit</span>
+                @if (AppState.Session.Can("content.manage_locks"))
+                {
+                    <button class="btn btn-outline-danger btn-sm ms-auto" style="font-size:11px"
+                            @onclick="() => ForceUnlockAllByUser(group.Key)"
+                            disabled="@(_processingUser == group.Key)">
+                        @if (_processingUser == group.Key)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Tüm Kilitlerini Aç
+                    </button>
+                }
+            </div>
+            <div class="card-body p-0">
+                <table class="cms-table mb-0">
+                    <tbody>
+                        @foreach (var lk in group)
+                        {
+                            var isStale = IsStale(lk);
+                            <tr class="@(isStale ? "table-warning" : "")">
+                                <td style="width:28px">
+                                    <span class="badge @(lk.EntityType == "Page" ? "bg-info" : "bg-primary")"
+                                          style="font-size:9px">@lk.EntityType</span>
+                                </td>
+                                <td>
+                                    <div style="font-size:12px;font-weight:500">@lk.EntityId</div>
+                                    @if (!string.IsNullOrEmpty(lk.LockReason))
+                                    {
+                                        <div class="small text-muted" style="font-size:10px">@lk.LockReason</div>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge @LockTypeBadge(lk.LockType)" style="font-size:9px">@lk.LockType</span>
+                                    @if (lk.RequiresSuperAdmin)
+                                    {
+                                        <span class="badge bg-danger ms-1" style="font-size:9px">SuperAdmin</span>
+                                    }
+                                </td>
+                                <td class="text-muted" style="font-size:11px">
+                                    @(lk.LockedAt?.ToLocalTime().ToString("dd MMM HH:mm") ?? "—")
+                                    @if (isStale)
+                                    {
+                                        <span class="badge bg-warning text-dark ms-1" style="font-size:9px">Eskimiş</span>
+                                    }
+                                </td>
+                                <td style="width:90px">
+                                    @if (AppState.Session.Can("content.manage_locks"))
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary"
+                                                style="font-size:10px"
+                                                @onclick="() => ForceUnlockAsync(lk)"
+                                                disabled="@(_processingId == lk.EntityId.ToString())">
+                                            @if (_processingId == lk.EntityId.ToString())
+                                            {
+                                                <span class="spinner-border spinner-border-sm"></span>
+                                            }
+                                            else
+                                            {
+
+                                                <span>🔓 Aç</span>
+                                            }
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    List<ContentLockDto> _locks = [];
+    string _typeFilter = "";
+    bool _staleOnly;
+    bool _loading = true;
+    bool _cleaning;
+    string? _error;
+    string? _processingId;
+    string? _processingUser;
+    string _search = "";
+
+    static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
+
+    int StaleCount => _locks.Count(IsStale);
+
+    IEnumerable<ContentLockDto> FilteredLocks => _locks
+        .Where(l => string.IsNullOrEmpty(_typeFilter) || l.EntityType == _typeFilter)
+        .Where(l => !_staleOnly || IsStale(l));
+
+    static bool IsStale(ContentLockDto l) =>
+        l.LockedAt.HasValue && DateTime.UtcNow - l.LockedAt.Value > StaleThreshold;
+
+    static string LockTypeBadge(string? t) => t switch
+    {
+        "Hard" => "bg-danger",
+        "Soft" => "bg-warning text-dark",
+        _ => "bg-secondary"
+    };
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        _loading = true; _error = null;
+        StateHasChanged();
+        try
+        {
+            // İçerik kilitlerini çek — gerçek impl. ayrı bir LockApiClient endpoint'i gerektirir
+            // Şimdilik mevcut ContentApiClient üzerinden demostrasyon verisi oluşturuyoruz
+            _locks = await FetchAllLocksAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _loading = false; }
+    }
+
+    // ── Gerçek implementasyonda GET /api/locks endpoint'i eklenmelidir ──────
+    Task<List<ContentLockDto>> FetchAllLocksAsync()
+    {
+        // Demo verisi — backend'de /api/locks endpoint'i yoksa eklenmelidir
+        var demo = new List<ContentLockDto>
+        {
+            new(Guid.NewGuid(), "Content", true, "Soft", Guid.NewGuid(), "editor@company.com",
+                DateTime.UtcNow.AddMinutes(-15), "Düzenleniyor"),
+            new(Guid.NewGuid(), "Page",    true, "Hard", Guid.NewGuid(), "admin@company.com",
+                DateTime.UtcNow.AddHours(-3), "Bakım modu"),
+            new(Guid.NewGuid(), "Content", true, "Soft", Guid.NewGuid(), "editor@company.com",
+                DateTime.UtcNow.AddHours(-5), null),
+        };
+        return Task.FromResult(demo);
+    }
+
+    async Task ForceUnlockAsync(ContentLockDto lk)
+    {
+        _processingId = lk.EntityId.ToString();
+        try
+        {
+            ApiResult<bool> r;
+            if (lk.EntityType == "Content")
+                r = await ContentApiClient.SetContentLockAsync(lk.EntityId, new SetContentLockRequest(false));
+            else
+                r = await PageApiClient.SetPageLockAsync(lk.EntityId, new SetContentLockRequest(false));
+
+            if (r.IsSuccess) { Toast.Success("Kilit açıldı."); await LoadAsync(); }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _processingId = null; }
+    }
+
+    async Task ForceUnlockAllByUser(string email)
+    {
+        _processingUser = email;
+        var targets = _locks.Where(l => l.LockedByEmail == email).ToList();
+        int ok = 0;
+        foreach (var lk in targets)
+        {
+            ApiResult<bool> r;
+            if (lk.EntityType == "Content")
+                r = await ContentApiClient.SetContentLockAsync(lk.EntityId, new SetContentLockRequest(false));
+            else
+                r = await PageApiClient.SetPageLockAsync(lk.EntityId, new SetContentLockRequest(false));
+            if (r.IsSuccess) ok++;
+        }
+        Toast.Success($"{ok}/{targets.Count} kilit açıldı.");
+        _processingUser = null;
+        await LoadAsync();
+    }
+
+    async Task CleanStaleLocksAsync()
+    {
+        _cleaning = true;
+        var stale = _locks.Where(IsStale).ToList();
+        int ok = 0;
+        foreach (var lk in stale)
+        {
+            ApiResult<bool> r;
+            if (lk.EntityType == "Content")
+                r = await ContentApiClient.SetContentLockAsync(lk.EntityId, new SetContentLockRequest(false));
+            else
+                r = await PageApiClient.SetPageLockAsync(lk.EntityId, new SetContentLockRequest(false));
+            if (r.IsSuccess) ok++;
+        }
+        Toast.Info($"{ok} eskimiş kilit temizlendi.");
+        _cleaning = false;
+        await LoadAsync();
+    }
+}

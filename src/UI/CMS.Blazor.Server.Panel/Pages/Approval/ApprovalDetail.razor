@@ -1,0 +1,349 @@
+@page "/approval/{ContentId:guid}"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Onay Detayı — CMS</PageTitle>
+@if (!AppState.Session.Can("content.publish"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+
+        <div class="input-group input-group-sm" style="width:200px">
+            <span class="input-group-text bg-transparent"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" /></svg></span>
+            <input @bind="_search" @bind:event="oninput" type="text" class="form-control" placeholder="Ara..." />
+        </div>
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="Onay Detayı">
+    <Actions>
+        <a href="/approval-center" class="btn btn-ghost btn-sm">← Onay Merkezine Dön</a>
+    </Actions>
+</PageHeader>
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger py-2 small">
+        @_error
+        <button class="btn btn-link btn-sm" @onclick="LoadAsync">Tekrar dene</button>
+    </div>
+}
+else if (_detail is not null)
+{
+
+
+    <div class="row g-3">
+        <!-- Sol: Meta Bilgi -->
+        <div class="col-12 col-lg-4">
+            <!-- İçerik kartı -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body p-3">
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <span class="badge @StatusCss">@_detail.Status</span>
+                        <span class="text-muted small">@_detail.ContentType</span>
+                    </div>
+                    <div class="fw-semibold mb-1" style="font-size:14px">/@_detail.Slug</div>
+                    <div class="small text-muted mb-3">Content ID: <code style="font-size:10px">@_detail.ContentId</code></div>
+
+                    <hr class="my-2" />
+                    <div class="small mb-1">
+                        <span class="text-muted">Gönderen:</span>
+                        <span class="fw-medium ms-1">@_detail.SubmittedByEmail</span>
+                    </div>
+                    <div class="small mb-1">
+                        <span class="text-muted">Gönderilme:</span>
+                        <span class="ms-1">@_detail.SubmittedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_detail.Note))
+                    {
+                        <div class="mt-2 p-2 rounded small" style="background:var(--surface-2);border-left:3px solid var(--accent)">
+                            <div class="text-muted" style="font-size:10px;font-weight:600">EDITOR NOTU</div>
+                            @_detail.Note
+                        </div>
+                    }
+                    @if (_detail.ReviewedAt is not null)
+                    {
+                        <hr class="my-2" />
+                        <div class="small text-muted">İnceleyen: <strong>@_detail.ReviewedByEmail</strong></div>
+                        <div class="small text-muted">@_detail.ReviewedAt.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm")</div>
+                        @if (!string.IsNullOrEmpty(_detail.ReviewComment))
+                        {
+                            <div class="mt-2 p-2 rounded small" style="background:#fef3c7;border-left:3px solid #f59e0b">
+                                <div style="font-size:10px;font-weight:600;color:#b45309">İNCELEME YORUMU</div>
+                                @_detail.ReviewComment
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <!-- Dil seçimi -->
+            @if (_detail.Translations.Count > 1)
+            {
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body p-3">
+                        <div class="small fw-semibold mb-2 text-muted">DİL SEÇİMİ</div>
+                        <div class="d-flex flex-wrap gap-1">
+                            @foreach (var t in _detail.Translations)
+                            {
+                                var lang = t.LanguageCode;
+                                <button class="btn btn-sm @(_activeLang == lang ? "btn-primary" : "btn-outline-secondary")"
+                                        style="font-size:11px"
+                                        @onclick="() => _activeLang = lang">
+                                    @lang.ToUpper()
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- Aksiyon paneli -->
+            @if (_detail.Status == "PendingApproval")
+            {
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body p-3">
+                        <div class="small fw-semibold mb-3 text-muted">KARAR VER</div>
+
+                        <!-- Yorum alanı -->
+                        <div class="mb-3">
+                            <label class="form-label small fw-medium">Yorum (opsiyonel)</label>
+                            <textarea @bind="_comment" class="form-control form-control-sm" rows="3"
+                                      placeholder="Onay/red gerekçenizi yazın..."></textarea>
+                        </div>
+
+                        <!-- Reddetme nedeni (zorunlu) -->
+                        @if (_rejectMode)
+                        {
+                            <div class="mb-3">
+                                <label class="form-label small fw-medium text-danger">Red Nedeni <span class="text-danger">*</span></label>
+                                <textarea @bind="_rejectReason" class="form-control form-control-sm @(string.IsNullOrEmpty(_rejectReason) ? "is-invalid" : "")"
+                                          rows="2" placeholder="Neden reddedildi?"></textarea>
+                                <div class="invalid-feedback">Red nedeni zorunludur.</div>
+                            </div>
+                        }
+
+                        <div class="d-flex gap-2">
+                            @if (!_rejectMode)
+                            {
+                                <button class="btn btn-success btn-sm flex-fill" @onclick="ApproveAsync" disabled="@_processing">
+                                    @if (_processing)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1"></span>
+                                    }
+                                    ✅ Onayla
+                                </button>
+                                <button class="btn btn-outline-danger btn-sm flex-fill" @onclick="() => _rejectMode = true">
+                                    ❌ Reddet
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-danger btn-sm flex-fill" @onclick="RejectAsync" disabled="@_processing">
+                                    @if (_processing)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1"></span>
+                                    }
+                                    Reddet
+                                </button>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => { _rejectMode = false; _rejectReason = null; }">
+                                    İptal
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Sağ: Diff Görünümü -->
+        <div class="col-12 col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                    <span class="fw-semibold small">İçerik Diff — @_activeLang.ToUpper()</span>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn @(_diffMode == "split" ? "btn-primary" : "btn-outline-secondary")"
+                                @onclick='() => _diffMode = "split"' style="font-size:11px">
+                            Split
+                        </button>
+                        <button class="btn @(_diffMode == "unified" ? "btn-primary" : "btn-outline-secondary")"
+                                @onclick='() => _diffMode = "unified"' style="font-size:11px">
+                            Unified
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    @{
+                        var trans = _detail.Translations.FirstOrDefault(t => t.LanguageCode == _activeLang);
+                    }
+                    @if (trans is null)
+                    {
+                        <div class="p-4 text-muted small">Bu dil için çeviri bulunamadı.</div>
+                    }
+                    else if (_diffMode == "split")
+                    {
+                        <div class="row g-0" style="min-height:400px">
+                            <div class="col-6 border-end">
+                                <div class="px-3 py-2 bg-danger bg-opacity-10 border-bottom">
+                                    <span style="font-size:11px;font-weight:600;color:#dc2626">− MEVCUT (Yayındaki)</span>
+                                </div>
+                                <div class="p-3">
+                                    <div class="fw-semibold mb-2 diff-old">@trans.Title</div>
+                                    <div class="small text-muted diff-body-old" style="line-height:1.7">
+                                        @((MarkupString)(trans.Body ?? ""))
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="px-3 py-2 bg-success bg-opacity-10 border-bottom">
+                                    <span style="font-size:11px;font-weight:600;color:#16a34a">+ YENİ (Gönderilen)</span>
+                                </div>
+                                <div class="p-3">
+                                    <div class="fw-semibold mb-2 diff-new" style="color:#15803d">@trans.Title</div>
+                                    <div class="small text-muted diff-body-new" style="line-height:1.7">
+                                        @((MarkupString)(trans.Body ?? ""))
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Unified diff görünümü -->
+                        <div class="p-3">
+                            <div class="diff-unified mb-2">
+                                <div class="diff-line diff-line-add">+ Başlık: @trans.Title</div>
+                            </div>
+                            <div style="font-size:11px;font-weight:600;color:#9ca3af;margin-bottom:8px">İÇERİK GÖVDE</div>
+                            <div class="p-3 rounded small" style="background:var(--surface-2);line-height:1.8;max-height:400px;overflow:auto">
+                                @((MarkupString)(trans.Body ?? "—"))
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .diff-line {
+        font-family: monospace;
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 3px;
+        margin-bottom: 2px;
+    }
+
+    .diff-line-add {
+        background: #f0fdf4;
+        color: #15803d;
+    }
+
+    .diff-line-del {
+        background: #fef2f2;
+        color: #dc2626;
+    }
+</style>
+
+@code {
+    [Parameter] public Guid ContentId { get; set; }
+
+    ApprovalDetailDto? _detail;
+    string _activeLang = "tr";
+    string _diffMode = "split";
+    string? _comment;
+    string? _rejectReason;
+    bool _rejectMode;
+    bool _loading = true;
+    bool _processing;
+    string? _error;
+
+    string StatusCss => _detail?.Status switch
+    {
+        "PendingApproval" => "bg-warning text-dark",
+        "Approved" => "bg-success",
+        "Rejected" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        _loading = true; _error = null;
+        StateHasChanged();
+        try
+        {
+            var r = await ApprovalApiClient.GetApprovalByIdAsync(ContentId);
+            if (!r.IsSuccess) { _error = r.Error!.Message; return; }
+            _detail = r.Data!;
+            if (_detail.Translations.Any())
+                _activeLang = _detail.Translations.First().LanguageCode;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _loading = false; }
+    }
+
+    async Task ApproveAsync()
+    {
+        _processing = true;
+        try
+        {
+            var r = await ApprovalApiClient.ApproveContentAsync(ContentId, _comment);
+            if (r.IsSuccess)
+            {
+                Toast.Success("İçerik başarıyla onaylandı.");
+                await LoadAsync();
+            }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _processing = false; }
+    }
+
+    async Task RejectAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_rejectReason)) return;
+        _processing = true;
+        try
+        {
+            var r = await ApprovalApiClient.RejectContentAsync(ContentId, _rejectReason);
+            if (r.IsSuccess)
+            {
+                Toast.Warning("İçerik reddedildi.");
+                _rejectMode = false;
+                await LoadAsync();
+            }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _processing = false; }
+    }
+}

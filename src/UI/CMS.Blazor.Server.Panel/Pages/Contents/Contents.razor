@@ -1,0 +1,513 @@
+@page "/contents"
+@attribute [Authorize]
+@layout DashBoardLayout
+@implements IDisposable
+
+<PageTitle>İçerikler — CMS</PageTitle>
+@if (!AppState.Session.Can("content.read"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">İçerikler</span>
+        <div class="dash-header-sep"></div>
+        <a href="/contents/trash" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z" />
+                <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1z" />
+            </svg>
+            Çöp Kutusu
+        </a>
+        @if (AppState.Session.Can("content.create"))
+        {
+            <a href="/contents/create" class="btn btn-primary btn-sm d-flex align-items-center gap-1">
+                <svg width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" />
+                </svg>
+                Yeni İçerik
+            </a>
+        }
+
+        <DuplicateContentModal @ref="_dupModal"
+                               ContentId="_dupContentId"
+                               SourceSlug="_dupSlug"
+                               OnDuplicated="HandleDuplicated" />
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+
+        <div class="input-group input-group-sm" style="width:200px">
+            <span class="input-group-text bg-transparent"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" /></svg></span>
+            <input @bind="_search" @bind:event="oninput" type="text" class="form-control" placeholder="Ara..." />
+        </div>
+        <button class="btn-ghost btn-icon" @onclick="() => _ = LoadAsync()">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" /><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" /></svg>
+        </button>
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+        <!-- Bulk action bar -->
+        @if (_selected.Any())
+        {
+            <div class="d-flex align-items-center gap-2 px-3 py-2 rounded mb-3"
+                 style="background:var(--accent-soft,rgba(99,102,241,.1));border:1px solid var(--accent)">
+                <span class="fw-medium" style="font-size:13px;color:var(--accent)">@_selected.Count seçili</span>
+                <div class="ms-2 d-flex gap-1 flex-wrap">
+                    @if (AppState.Session.Can("content.publish"))
+                    {
+                        <button class="btn btn-sm btn-outline-success" @onclick="BulkPublish" disabled="@_bulk">Yayınla</button>
+                        <button class="btn btn-sm btn-outline-warning" @onclick="BulkUnpublish" disabled="@_bulk">Yayından Kaldır</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="BulkArchive" disabled="@_bulk">Arşivle</button>
+                    }
+                    @if (AppState.Session.Can("content.delete"))
+                    {
+                        <button class="btn btn-sm btn-outline-danger" @onclick="BulkDelete" disabled="@_bulk">Sil</button>
+                    }
+                </div>
+                <button class="btn btn-ghost btn-sm ms-auto" @onclick="() => _selected.Clear()">✕ Seçimi Kaldır</button>
+                @if (_bulk)
+                {
+                    <div class="spinner-border spinner-border-sm ms-2" style="color:var(--accent)"></div>
+                }
+            </div>
+        }
+
+        <!-- Filtre şeridi -->
+        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+            <!-- Arama -->
+            <div style="position:relative;max-width:220px;flex:1">
+                <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text-3)"
+                     width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" />
+                </svg>
+                <input @bind="_search" @bind:event="oninput" @bind:after="OnSearchChanged"
+                       type="text" class="form-control form-control-sm"
+                       style="padding-left:30px" placeholder="Başlık veya slug ara..." />
+            </div>
+
+            <!-- Durum -->
+            <div class="btn-group btn-group-sm">
+                @foreach (var s in _statuses)
+                {
+                    <button class="btn @(_statusFilter == s.Val ? "btn-primary" : "btn-outline-secondary")"
+                            style="font-size:11.5px"
+                            @onclick="() => SetStatus(s.Val)">
+                        @s.Label
+                        @if (_statusCounts.TryGetValue(s.Val ?? "_all", out var cnt))
+                        {
+                            <span class="badge @(_statusFilter == s.Val ? "bg-light text-dark" : "bg-secondary") ms-1"
+                                  style="font-size:9px">@cnt</span>
+                        }
+                    </button>
+                }
+            </div>
+
+            <!-- İçerik tipi -->
+            <select class="form-select form-select-sm" style="max-width:130px;font-size:12px"
+                    @bind="_contentTypeFilter" @bind:after="ResetAndLoad">
+                <option value="">Tüm tipler</option>
+                <option value="Page">Page</option>
+                <option value="BlogPost">BlogPost</option>
+                <option value="News">News</option>
+                <option value="Landing">Landing</option>
+                <option value="Category">Category</option>
+            </select>
+
+            <!-- Dil filtresi -->
+            <div class="d-flex gap-1 ms-auto">
+                @foreach (var l in _langs)
+                {
+                    <button class="btn btn-sm @(_langFilter == l ? "btn-primary" : "btn-ghost")"
+                            style="font-size:11px;min-width:32px"
+                            @onclick="() => ToggleLang(l)">
+                        @l.ToUpper()
+                    </button>
+                }
+            </div>
+        </div>
+
+        <!-- Hata -->
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger py-2 small mb-3">
+                @_error
+                <button class="btn btn-link btn-sm" @onclick="() => _ = LoadAsync()">Tekrar dene</button>
+            </div>
+        }
+
+
+        @if (_loading)
+        {
+            <div class="d-flex align-items-center justify-content-center" style="height:200px">
+                <div class="spinner-border" style="width:1.2rem;height:1.2rem;color:var(--accent)"></div>
+            </div>
+        }
+        else
+        {
+            <div class="cms-table-wrap">
+                <table class="cms-table">
+                    <thead>
+                        <tr>
+                            <th class="col-check">
+                                <input type="checkbox" class="form-check-input"
+                                       @onchange="e => ToggleAll((bool)e.Value!)" />
+                            </th>
+                            <th @onclick='() => SetSort("title")' style="cursor:pointer">
+                                <div class="th-inner">
+                                    Başlık / Slug
+                                    @SortIcon("title")
+                                </div>
+                            </th>
+                            <th><div class="th-inner">Tip</div></th>
+                            <th><div class="th-inner">Diller</div></th>
+                            <th style="width:110px"><div class="th-inner">Tamamlanma</div></th>
+                            <th style="width:100px"><div class="th-inner">Durum</div></th>
+                            <th @onclick='() => SetSort("date")' style="width:95px;cursor:pointer">
+                                <div class="th-inner">
+                                    Güncelleme
+                                    @SortIcon("date")
+                                </div>
+                            </th>
+                            <th style="width:90px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{
+                            var shown = ApplyFilters(_items);
+                        }
+                        @foreach (var c in shown)
+                        {
+                            <tr @onclick='() => Nav.NavigateTo($"/contents/{c.Id}/edit")'
+                                style="cursor:pointer"
+                                class="@(_selected.Contains(c.Id) ? "selected" : "")">
+                                <td class="col-check" @onclick:stopPropagation>
+                                    <input type="checkbox" class="form-check-input"
+                                           checked="@_selected.Contains(c.Id)"
+                                           @onchange="e => Toggle(c.Id, (bool)e.Value!)" />
+                                </td>
+                                <td>
+                                    <div style="font-weight:600;font-size:13px">
+                                        @(string.IsNullOrEmpty(c.Title) ? "(başlıksız)" : c.Title)
+                                    </div>
+                                    <div class="mono" style="font-size:10.5px;color:var(--text-3)">
+                                        /&thinsp;@c.Slug
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge" style="background:@ContentTypeColor(c.ContentType);color:#fff;font-size:10px">
+                                        @c.ContentType
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="d-flex gap-1 flex-wrap">
+                                        @foreach (var l in c.Languages)
+                                        {
+                                            <span class="badge bg-secondary" style="font-size:9.5px">@l.ToUpper()</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    @if (_completions.TryGetValue(c.Id, out var comp))
+                                    {
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div style="flex:1;height:4px;background:var(--surface-2);border-radius:2px;overflow:hidden">
+                                                <div style="height:100%;width:@(comp)%;background:@ScoreColor(comp);border-radius:2px;transition:width .4s"></div>
+                                            </div>
+                                            <span class="mono" style="font-size:10.5px;color:@ScoreColor(comp);min-width:26px">@comp%</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div style="height:4px;background:var(--surface-2);border-radius:2px;max-width:60px;animation:pulse 1.2s infinite"></div>
+                                    }
+                                </td>
+                                <td><StatusBadge Status="@c.Status" /></td>
+                                <td>
+                                    <small class="mono" style="font-size:10.5px;color:var(--text-3)">
+                                        @((c.UpdatedAt ?? c.CreatedAt).ToString("dd MMM yy"))
+                                    </small>
+                                </td>
+                                <td @onclick:stopPropagation>
+                                    <div class="d-flex gap-1 justify-content-end">
+                                        <a href="/contents/@c.Id/preview" class="btn-ghost btn-icon" title="Önizle">
+                                            <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                                                <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z" />
+                                                <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z" />
+                                            </svg>
+                                        </a>
+                                        @if (AppState.Session.Can("content.edit"))
+                                        {
+                                            <a href="/contents/@c.Id/edit" class="btn-ghost btn-icon" title="Düzenle">
+                                                <SvgIcon Name="icon-edit" Size="13" />
+                                                <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                                                    <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10z" />
+                                                </svg>
+                                            </a>
+                                            <button class="btn-ghost btn-icon" title="Çoğalt"
+                                                    @onclick="() => OpenDuplicate(c.Id, c.Slug)">
+                                                <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                                                    <path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z" />
+                                                </svg>
+                                            </button>
+                                        }
+                                        @if (c.Status != "Published" && AppState.Session.Can("content.publish"))
+                                        {
+                                            <button class="btn-ghost btn-icon" title="Yayınla"
+                                                    style="color:var(--green)"
+                                                    @onclick="() => QuickPublish(c.Id)">
+                                                <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                                                    <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z" />
+                                                </svg>
+                                            </button>
+                                        }
+                                        @if (AppState.Session.Can("content.delete"))
+                                        {
+                                            <button class="btn-ghost btn-icon" title="Sil"
+                                                    style="color:var(--red)"
+                                                    @onclick="() => QuickDelete(c.Id)">
+                                                <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                                                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z" />
+                                                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1z" />
+                                                </svg>
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                        @if (!shown.Any())
+                        {
+                            <tr>
+                                <td colspan="8" class="text-center py-5" style="color:var(--text-3)">
+                                    <svg width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                         style="opacity:.4;display:block;margin:0 auto 8px">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    İçerik bulunamadı
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                <Paginator CurrentPage="@_pageIndex"
+                           TotalCount="@_totalCount"
+                           PageSize="@_pageSize"
+                           OnPageChange="OnPageChange"
+                           OnPageSizeChange="OnPageSizeChange" />
+            </div>
+        }
+
+    </div>
+</div>
+
+
+
+
+
+@code {
+    List<ContentSummaryDto> _items = [];
+    Dictionary<Guid, int> _completions = [];
+    HashSet<Guid> _selected = [];
+    Dictionary<string, int> _statusCounts = [];
+
+    string? _search, _statusFilter, _langFilter, _contentTypeFilter;
+    string _sortField = "date", _sortDir = "desc";
+    string _error = "";
+    bool _loading, _bulk;
+    bool _hasPrev, _hasNext;
+    int _pageIndex, _pageSize = 25, _totalCount;
+
+    readonly string[] _langs = ["tr", "en", "de", "es"];
+
+    record StatusOption(string? Val, string Label);
+    readonly StatusOption[] _statuses =
+    [
+        new(null,        "Tümü"),
+        new("Draft",     "Taslak"),
+        new("Scheduled", "Zamanlandı"),
+        new("Published", "Yayında"),
+        new("Expired",   "Sona Erdi"),
+        new("Archived",  "Arşiv"),
+    ];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        _loading = true; _error = ""; StateHasChanged();
+        var r = await ContentApiClient.GetContentsAsync(_pageIndex, _pageSize, _statusFilter, _search,
+            string.IsNullOrEmpty(_contentTypeFilter) ? null : _contentTypeFilter);
+        if (r.IsSuccess && r.Data is not null)
+        {
+            _items = r.Data.Items;
+            _totalCount = r.Data.Count;
+            _hasPrev = r.Data.HasPrevious;
+            _hasNext = r.Data.HasNext;
+            BuildStatusCounts();
+            _ = LoadCompletionsAsync(_items.Select(i => i.Id).ToList());
+        }
+        else _error = r.Error?.Message ?? "Yükleme başarısız.";
+        _loading = false;
+        StateHasChanged();
+    }
+
+    void BuildStatusCounts()
+    {
+        _statusCounts.Clear();
+        _statusCounts["_all"] = _totalCount;
+        foreach (var g in _items.GroupBy(i => i.Status))
+            _statusCounts[g.Key] = g.Count();
+    }
+
+    async Task LoadCompletionsAsync(List<Guid> ids)
+    {
+        // Tüm completion skorlarını paralel çek, sonra tek seferde UI'ı güncelle
+        var tasks = ids.Select(id => ContentApiClient.GetCompletionAsync(id)).ToList();
+        var results = await Task.WhenAll(tasks);
+
+        for (var i = 0; i < ids.Count; i++)
+        {
+            var r = results[i];
+            if (r.IsSuccess && r.Data is not null)
+                _completions[ids[i]] = r.Data.OverallScore;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    List<ContentSummaryDto> ApplyFilters(List<ContentSummaryDto> src)
+    {
+        var q = src.AsEnumerable();
+        if (!string.IsNullOrEmpty(_langFilter))
+            q = q.Where(c => c.Languages.Contains(_langFilter));
+        q = _sortField switch
+        {
+            "title" => _sortDir == "asc" ? q.OrderBy(c => c.Title) : q.OrderByDescending(c => c.Title),
+            _ => _sortDir == "asc"
+                ? q.OrderBy(c => c.UpdatedAt ?? c.CreatedAt)
+                : q.OrderByDescending(c => c.UpdatedAt ?? c.CreatedAt)
+        };
+        return q.ToList();
+    }
+
+    // Sort
+    void SetSort(string field)
+    {
+        if (_sortField == field) _sortDir = _sortDir == "asc" ? "desc" : "asc";
+        else { _sortField = field; _sortDir = "desc"; }
+    }
+
+    RenderFragment SortIcon(string field) => _sortField != field
+        ? @<span style="color:var(--text-4);margin-left:3px;font-size:9px">⇅</span>
+        : _sortDir == "asc"
+            ? @<span style="margin-left:3px;font-size:9px">↑</span>
+            : @<span style="margin-left:3px;font-size:9px">↓</span>;
+
+    // Filters
+    System.Timers.Timer? _debounce;
+    void OnSearchChanged()
+    {
+        _debounce?.Dispose();
+        _debounce = new(380);
+        _debounce.Elapsed += async (_, _) =>
+        {
+            _debounce?.Dispose();
+            _pageIndex = 0;
+            await InvokeAsync(LoadAsync);
+        };
+        _debounce.AutoReset = false;
+        _debounce.Start();
+    }
+
+    void SetStatus(string? val) { _statusFilter = val; _pageIndex = 0; _ = LoadAsync(); }
+    void ResetAndLoad() { _pageIndex = 0; _ = LoadAsync(); }
+    void ToggleLang(string l) { _langFilter = _langFilter == l ? null : l; _ = LoadAsync(); }
+
+    // Pagination
+    Task OnPageChange(int p) { _pageIndex = p; return LoadAsync(); }
+    Task OnPageSizeChange(int s) { _pageSize = s; _pageIndex = 0; return LoadAsync(); }
+
+    // Single actions
+    async Task QuickPublish(Guid id)
+    {
+        var r = await ContentApiClient.PublishContentAsync(id);
+        if (r.IsSuccess) await LoadAsync(); else _error = r.Error?.Message ?? "";
+    }
+
+    async Task QuickDelete(Guid id)
+    {
+        var r = await ContentApiClient.SoftDeleteContentAsync(id);
+        if (r.IsSuccess) await LoadAsync(); else _error = r.Error?.Message ?? "";
+    }
+
+    // Selection
+    void Toggle(Guid id, bool on) { if (on) _selected.Add(id); else _selected.Remove(id); }
+    void ToggleAll(bool on)
+    {
+        if (on) foreach (var c in ApplyFilters(_items)) _selected.Add(c.Id);
+        else _selected.Clear();
+    }
+
+    // Bulk actions
+    async Task BulkPublish() => await BulkOp(id => ContentApiClient.PublishContentAsync(id), "yayınlandı");
+    async Task BulkUnpublish() => await BulkOp(id => ContentApiClient.UnpublishContentAsync(id), "yayından kaldırıldı");
+    async Task BulkArchive() => await BulkOp(id => ContentApiClient.ArchiveContentAsync(id), "arşivlendi");
+    async Task BulkDelete() => await BulkOp(id => ContentApiClient.SoftDeleteContentAsync(id), "silindi");
+
+    async Task BulkOp(Func<Guid, Task<ApiResult<bool>>> fn, string verb)
+    {
+        _bulk = true; _error = "";
+        var ids = _selected.ToList();
+        var failed = 0;
+        foreach (var id in ids)
+        {
+            var r = await fn(id);
+            if (!r.IsSuccess) failed++;
+        }
+        Toast.Success($"{ids.Count - failed} içerik {verb}.{(failed > 0 ? $" {failed} başarısız." : "")}");
+        _selected.Clear();
+        _bulk = false;
+        await LoadAsync();
+    }
+
+    // Helpers
+    static string ScoreColor(int p) => p >= 80 ? "var(--green)" : p >= 40 ? "var(--yellow,#f59e0b)" : "var(--red)";
+
+    static string ContentTypeColor(string t) => t switch
+    {
+        "Page" => "#6366f1",
+        "BlogPost" => "#0ea5e9",
+        "News" => "#10b981",
+        "Landing" => "#f59e0b",
+        "Category" => "#8b5cf6",
+        _ => "#6c757d"
+    };
+
+    // Duplicate modal
+    Guid _dupContentId;
+    string _dupSlug = "";
+    DuplicateContentModal? _dupModal;
+
+    void OpenDuplicate(Guid id, string slug)
+    {
+        _dupContentId = id;
+        _dupSlug = slug;
+        _dupModal?.Open();
+    }
+
+    async Task HandleDuplicated(Guid newId)
+    {
+        Toast.Success("İçerik başarıyla çoğaltıldı.");
+        await LoadAsync();
+        Nav.NavigateTo($"/contents/{newId}/edit");
+    }
+
+    public void Dispose() => _debounce?.Dispose();
+}

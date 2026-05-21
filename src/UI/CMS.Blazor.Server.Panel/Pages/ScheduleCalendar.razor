@@ -1,0 +1,591 @@
+﻿@page "/schedule/calendar"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Yayın Takvimi — CMS</PageTitle>
+@if (!AppState.Session.Can("content.publish"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="Yayın Takvimi">
+    <Actions>
+        <div class="btn-group btn-group-sm">
+            <button class="btn @(_view == "month" ? "btn-primary" : "btn-outline-secondary")"
+                    @onclick='() => _view = "month"'>
+                Ay
+            </button>
+            <button class="btn @(_view == "week" ? "btn-primary" : "btn-outline-secondary")"
+                    @onclick='() => _view = "week"'>
+                Hafta
+            </button>
+            <button class="btn @(_view == "queue" ? "btn-primary" : "btn-outline-secondary")"
+                    @onclick='() => _view = "queue"'>
+                Kuyruk
+            </button>
+        </div>
+        <button class="btn-ghost btn-icon" title="Önceki"
+                @onclick="PrevPeriod">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z" />
+            </svg>
+        </button>
+        <span class="fw-semibold small px-2" style="min-width:130px;text-align:center">
+            @PeriodLabel
+        </span>
+        <button class="btn-ghost btn-icon" title="Sonraki"
+                @onclick="NextPeriod">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z" />
+            </svg>
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="GoToday">Bugün</button>
+        <button class="btn-ghost btn-icon" title="Yenile" @onclick="LoadAsync">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+            </svg>
+        </button>
+    </Actions>
+</PageHeader>
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else if (_view == "month")
+{
+    <!-- ── AY GÖRÜNÜMÜ ────────────────────────────────────────────── -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <!-- Day headers -->
+            <div class="cal-grid cal-header">
+                @foreach (var d in new[] { "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz" })
+                {
+                    <div class="cal-dayname">@d</div>
+                }
+            </div>
+            <!-- Calendar cells -->
+            <div class="cal-grid cal-body">
+                @foreach (var cell in _calCells)
+                {
+                    var c = cell;
+                    var isToday = c.Date == DateOnly.FromDateTime(DateTime.Today);
+                    var isCurrentMonth = c.Date.Month == _current.Month;
+                    var events = EventsForDay(c.Date);
+                    <div class="cal-cell @(isToday ? "cal-today" : "") @(!isCurrentMonth ? "cal-other-month" : "")"
+                         style="@(isToday ? "background:var(--brand-light)" : "")">
+                        <div class="cal-cell-number">@c.Date.Day</div>
+                        @foreach (var ev in events.Take(3))
+                        {
+                            var e = ev;
+                            <div class="cal-event @CalEventCss(e.Status)"
+                                 title="@e.Title — @e.Status"
+                                 @onclick="() => SelectItem(e)"
+                                 style="cursor:pointer">
+                                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">
+                                    @e.Title
+                                </span>
+                            </div>
+                        }
+                        @if (events.Count > 3)
+                        {
+                            <div class="cal-event-more">+@(events.Count - 3) daha</div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+else if (_view == "week")
+{
+    <!-- ── HAFTA GÖRÜNÜMÜ ─────────────────────────────────────────── -->
+    var weekDays = GetWeekDays();
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="d-flex border-bottom">
+                <div style="width:60px;flex-shrink:0"></div>
+                @foreach (var wd in weekDays)
+                {
+                    var isToday = wd == DateOnly.FromDateTime(DateTime.Today);
+                    <div class="flex-fill text-center py-2 border-start"
+                         style="@(isToday ? "background:var(--brand-light);font-weight:600" : "")">
+                        <div class="small text-muted">@wd.ToString("ddd")</div>
+                        <div style="font-size:18px;font-weight:700">@wd.Day</div>
+                    </div>
+                }
+            </div>
+            <!-- 24h time slots (show 8-22) -->
+            @for (int h = 8; h <= 22; h++)
+            {
+                var hour = h;
+                <div class="d-flex border-bottom" style="min-height:48px">
+                    <div class="text-muted text-end pe-2 pt-1" style="width:60px;flex-shrink:0;font-size:11px">
+                        @hour:00
+                    </div>
+                    @foreach (var wd in weekDays)
+                    {
+                        var day = wd;
+                        var slotEvents = _items.Where(i =>
+                        i.PublishAt.HasValue &&
+                        DateOnly.FromDateTime(i.PublishAt.Value) == day &&
+                        i.PublishAt.Value.Hour == hour).ToList();
+                        <div class="flex-fill border-start position-relative" style="min-height:48px;padding:2px">
+                            @foreach (var ev in slotEvents)
+                            {
+                                <div class="cal-event @CalEventCss(ev.Status)"
+                                     style="cursor:pointer;margin-bottom:2px"
+                                     @onclick="() => SelectItem(ev)">
+                                    @ev.Title
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+else
+{
+    <!-- ── KUYRUK GÖRÜNÜMÜ ────────────────────────────────────────── -->
+    <div class="row g-3">
+        <!-- Zamanlanmış -->
+        <div class="col-12 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                    <span class="fw-semibold small">Yayın Kuyruğu</span>
+                    <span class="badge bg-warning text-dark">@_items.Count(i => i.Status == "Scheduled")</span>
+                </div>
+                <div class="card-body p-0" style="max-height:65vh;overflow-y:auto">
+                    @foreach (var item in _items.Where(i => i.Status == "Scheduled").OrderBy(i => i.PublishAt))
+                    {
+                        var it = item;
+                        <div class="d-flex align-items-start gap-2 p-3 border-bottom queue-row"
+                             style="cursor:pointer" @onclick="() => SelectItem(it)">
+                            <div class="queue-timeline-dot" style="background:#f59e0b;margin-top:4px"></div>
+                            <div class="flex-fill">
+                                <div class="fw-medium" style="font-size:13px">@it.Title</div>
+                                <div class="mono text-muted" style="font-size:10px">/@it.Slug</div>
+                                <div class="d-flex gap-3 mt-1">
+                                    <small class="text-muted">
+                                        <strong>Yayın:</strong> @(it.PublishAt?.ToString("dd MMM yyyy HH:mm") ?? "—")
+                                    </small>
+                                    @if (it.UnpublishAt.HasValue)
+                                    {
+                                        <small class="text-muted">
+                                            <strong>Bitiş:</strong> @it.UnpublishAt.Value.ToString("dd MMM HH:mm")
+                                        </small>
+                                    }
+                                </div>
+                                @if (it.PublishAt.HasValue)
+                                {
+                                    var diff = it.PublishAt.Value - DateTime.UtcNow;
+                                    <div style="font-size:11px;color:var(--accent);margin-top:2px">
+                                        @(diff.TotalSeconds > 0
+                                                                    ? $"⏱ {(int)diff.TotalHours}s {diff.Minutes}d sonra"
+                                                                    : "⏳ İşleniyor...")
+                        </div>
+                                                }
+                            </div>
+                            <a href="/contents/@it.Id/edit" class="btn btn-link btn-sm p-0"
+                               style="font-size:11px" @onclick:stopPropagation>Düzenle</a>
+                        </div>
+                    }
+                    @if (!_items.Any(i => i.Status == "Scheduled"))
+                    {
+                        <p class="text-muted small text-center py-4">Kuyrukta içerik yok</p>
+                    }
+                </div>
+            </div>
+        </div>
+        <!-- Son yayınlananlar -->
+        <div class="col-12 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+                    <span class="fw-semibold small">Yayında / Yakında Bitiyor</span>
+                    <span class="badge bg-success">@_items.Count(i => i.Status == "Published")</span>
+                </div>
+                <div class="card-body p-0" style="max-height:65vh;overflow-y:auto">
+                    @foreach (var item in _items.Where(i => i.Status == "Published").OrderByDescending(i => i.PublishAt))
+                    {
+                        var it = item;
+                        var expiringSoon = it.UnpublishAt.HasValue && it.UnpublishAt.Value < DateTime.UtcNow.AddHours(48);
+                        <div class="d-flex align-items-start gap-2 p-3 border-bottom queue-row @(expiringSoon ? "bg-warning-row" : "")"
+                             style="cursor:pointer" @onclick="() => SelectItem(it)">
+                            <div class="queue-timeline-dot" style="background:@(expiringSoon ? "#ef4444" : "#22c55e");margin-top:4px"></div>
+                            <div class="flex-fill">
+                                <div class="fw-medium" style="font-size:13px">@it.Title</div>
+                                <div class="mono text-muted" style="font-size:10px">/@it.Slug</div>
+                                @if (expiringSoon && it.UnpublishAt.HasValue)
+                                {
+                                    <div style="font-size:11px;color:#ef4444;margin-top:2px">
+                                        ⚠ @it.UnpublishAt.Value.ToString("dd MMM HH:mm") de bitiyor
+                                    </div>
+                                }
+                                else if (it.UnpublishAt.HasValue)
+                                {
+                                    <small class="text-muted" style="font-size:10px">
+                                        Bitiş: @it.UnpublishAt.Value.ToString("dd MMM yyyy HH:mm")
+                                    </small>
+                                }
+                            </div>
+                        </div>
+                    }
+                    @if (!_items.Any(i => i.Status == "Published"))
+                    {
+                        <p class="text-muted small text-center py-4">Yayında içerik yok</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ── Detay Slide Panel ───────────────────────────────────────────── -->
+@if (_selected is not null)
+{
+    <div class="position-fixed top-0 end-0 h-100 shadow-lg bg-surface-0"
+         style="width:360px;z-index:1030;border-left:1px solid var(--border);overflow-y:auto">
+        <div class="p-3 border-bottom d-flex align-items-center justify-content-between">
+            <span class="fw-semibold small">İçerik Detayı</span>
+            <button class="btn-ghost btn-icon" @onclick="() => _selected = null">
+                <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z" />
+                </svg>
+            </button>
+        </div>
+        <div class="p-3">
+            <div class="mb-2">
+                <span class="badge @CalEventCss(_selected.Status)">@_selected.Status</span>
+            </div>
+            <h6 class="fw-semibold">@_selected.Title</h6>
+            <div class="mono text-muted mb-3" style="font-size:11px">/@_selected.Slug</div>
+
+            <div class="mb-2">
+                <label class="form-label small text-muted mb-1">Yayın Zamanı</label>
+                <div class="small">@(_selected.PublishAt?.ToString("dd MMM yyyy HH:mm") ?? "Belirtilmemiş")</div>
+            </div>
+            <div class="mb-2">
+                <label class="form-label small text-muted mb-1">Bitiş Zamanı</label>
+                <div class="small">@(_selected.UnpublishAt?.ToString("dd MMM yyyy HH:mm") ?? "Belirtilmemiş")</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label small text-muted mb-1">Dil Kapsamı</label>
+                <div class="d-flex gap-1 flex-wrap">
+                    @foreach (var l in _selected.Languages)
+                    {
+                        <span class="badge bg-secondary" style="font-size:10px">@l.ToUpper()</span>
+                    }
+                </div>
+            </div>
+
+            <!-- Hızlı zamanlama düzenleme -->
+            @if (AppState.Session.Can("content.publish"))
+            {
+                <div class="border-top pt-3">
+                    <label class="form-label small fw-medium mb-2">Zamanlamayı Güncelle</label>
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Yayın Tarihi</label>
+                        <input type="datetime-local" class="form-control form-control-sm"
+                               value="@(_editPublishAt?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                               @onchange="e => _editPublishAt = e.Value is string s && !string.IsNullOrEmpty(s) ? DateTime.Parse(s) : null" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Bitiş Tarihi</label>
+                        <input type="datetime-local" class="form-control form-control-sm"
+                               value="@(_editUnpublishAt?.ToString("yyyy-MM-ddTHH:mm") ?? "")"
+                               @onchange="e => _editUnpublishAt = e.Value is string s && !string.IsNullOrEmpty(s) ? DateTime.Parse(s) : null" />
+                    </div>
+                    <button class="btn btn-sm btn-primary w-100" @onclick="SaveSchedule" disabled="@_schedSaving">
+                        @if (_schedSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Zamanlamayı Kaydet
+                    </button>
+                    @if (!string.IsNullOrEmpty(_schedMsg))
+                    {
+                        <div class="alert alert-success py-1 small mt-2">@_schedMsg</div>
+                    }
+                </div>
+            }
+
+            <div class="border-top pt-3 mt-3">
+                <a href="/contents/@_selected.Id/edit" class="btn btn-sm btn-outline-primary w-100">
+                    İçeriği Düzenle →
+                </a>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .cal-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+    }
+
+    .cal-header {
+        background: var(--surface-2);
+    }
+
+    .cal-dayname {
+        text-align: center;
+        padding: 8px 4px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-3);
+    }
+
+    .cal-body {
+    }
+
+    .cal-cell {
+        min-height: 90px;
+        padding: 4px;
+        border-top: 1px solid var(--border);
+        border-left: 1px solid var(--border);
+        overflow: hidden;
+    }
+
+        .cal-cell:nth-child(7n+1) {
+            border-left: none;
+        }
+
+    .cal-cell-number {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-2);
+        margin-bottom: 2px;
+    }
+
+    .cal-today .cal-cell-number {
+        color: var(--accent);
+    }
+
+    .cal-other-month {
+        opacity: .4;
+    }
+
+    .cal-event {
+        font-size: 10px;
+        padding: 1px 4px;
+        border-radius: 3px;
+        margin-bottom: 1px;
+        font-weight: 500;
+    }
+
+    .cal-event-scheduled {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
+    .cal-event-published {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .cal-event-expired {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .cal-event-more {
+        font-size: 10px;
+        color: var(--text-3);
+    }
+
+    .queue-row:hover {
+        background: var(--surface-1);
+    }
+
+    .queue-timeline-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .bg-warning-row {
+        background: #fffbeb;
+    }
+
+    .bg-surface-0 {
+        background: var(--surface-0);
+    }
+</style>
+
+@code {
+    bool _loading = true;
+    string _view = "month";
+    DateOnly _current = DateOnly.FromDateTime(DateTime.Today);
+    ScheduleItem? _selected;
+    bool _schedSaving;
+    string? _schedMsg;
+    DateTime? _editPublishAt, _editUnpublishAt;
+    List<ScheduleItem> _items = [];
+    List<CalCell> _calCells = [];
+    string _search = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await ContentApiClient.GetContentsAsync(0, 200, "Scheduled");
+        var r2 = await ContentApiClient.GetContentsAsync(0, 200, "Published");
+
+        _items = [];
+        if (r.IsSuccess && r.Data?.Items is not null)
+            _items.AddRange(r.Data.Items.Select(i => new ScheduleItem(i, null, null)));
+        if (r2.IsSuccess && r2.Data?.Items is not null)
+            _items.AddRange(r2.Data.Items.Select(i => new ScheduleItem(i, null, null)));
+
+        BuildCalendarCells();
+        _loading = false;
+        StateHasChanged();
+    }
+
+    void BuildCalendarCells()
+    {
+        _calCells = [];
+        var firstDay = new DateOnly(_current.Year, _current.Month, 1);
+        var startDow = (int)firstDay.DayOfWeek;
+        if (startDow == 0) startDow = 7; // make Sunday = 7
+        var start = firstDay.AddDays(-(startDow - 1));
+
+        for (int i = 0; i < 42; i++)
+            _calCells.Add(new CalCell(start.AddDays(i)));
+    }
+
+    List<ScheduleItem> EventsForDay(DateOnly day) =>
+        _items.Where(i => i.PublishAt.HasValue && DateOnly.FromDateTime(i.PublishAt.Value) == day).ToList();
+
+    List<DateOnly> GetWeekDays()
+    {
+        var today = _current;
+        var dow = (int)today.DayOfWeek;
+        if (dow == 0) dow = 7;
+        var monday = today.AddDays(-(dow - 1));
+        return Enumerable.Range(0, 7).Select(i => monday.AddDays(i)).ToList();
+    }
+
+    void SelectItem(ScheduleItem item)
+    {
+        _selected = item;
+        _editPublishAt = item.PublishAt;
+        _editUnpublishAt = item.UnpublishAt;
+        _schedMsg = null;
+    }
+
+    async Task SaveSchedule()
+    {
+        if (_selected is null) return;
+        _schedSaving = true;
+        var r = await ContentApiClient.SetScheduleAsync(_selected.Id, new SetScheduleRequest(
+            _editPublishAt, _editUnpublishAt, null, "UTC"));
+        _schedSaving = false;
+        if (r.IsSuccess)
+        {
+            _schedMsg = "Zamanlama kaydedildi ✓";
+            await LoadAsync();
+            StateHasChanged();
+        }
+    }
+
+    void PrevPeriod()
+    {
+        _current = _view switch
+        {
+            "week" => _current.AddDays(-7),
+            _ => _current.AddMonths(-1),
+        };
+        BuildCalendarCells();
+    }
+
+    void NextPeriod()
+    {
+        _current = _view switch
+        {
+            "week" => _current.AddDays(7),
+            _ => _current.AddMonths(1),
+        };
+        BuildCalendarCells();
+    }
+
+    void GoToday()
+    {
+        _current = DateOnly.FromDateTime(DateTime.Today);
+        BuildCalendarCells();
+    }
+
+    string PeriodLabel => _view switch
+    {
+        "week" => $"{_current:d MMMM} haftası",
+        _ => _current.ToString("MMMM yyyy"),
+    };
+
+    static string CalEventCss(string status) => status switch
+    {
+        "Scheduled" => "cal-event-scheduled",
+        "Published" => "cal-event-published",
+        "Expired" => "cal-event-expired",
+        _ => "cal-event-scheduled",
+    };
+
+    sealed class ScheduleItem
+    {
+        public Guid Id { get; }
+        public string Slug { get; }
+        public string Title { get; }
+        public string Status { get; }
+        public List<string> Languages { get; }
+        public DateTime? PublishAt { get; }
+        public DateTime? UnpublishAt { get; }
+
+        public ScheduleItem(ContentSummaryDto dto, DateTime? publishAt, DateTime? unpublishAt)
+        {
+            Id = dto.Id;
+            Slug = dto.Slug;
+            Title = string.IsNullOrEmpty(dto.Title) ? dto.Slug : dto.Title;
+            Status = dto.Status;
+            Languages = dto.Languages;
+            // PublishAt comes from schedule; for demo use UpdatedAt
+            PublishAt = publishAt ?? dto.UpdatedAt ?? dto.CreatedAt;
+            UnpublishAt = unpublishAt;
+        }
+    }
+
+    sealed record CalCell(DateOnly Date);
+}

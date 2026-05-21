@@ -1,0 +1,347 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+
+<AuthorizeView>
+    <Authorized>
+        @if (!AppState.Session.HasTenant)
+        {
+            <RedirectToTenantSelect />
+        }
+        else
+        {
+            <div class="dash-root" data-bs-theme="@AppState.Preferences.Theme">
+
+                <header class="dash-header">
+                    <div class="dash-brand">
+                        <div class="dash-brand-icon">
+                            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M5 4a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1H5zm-.5 2.5A.5.5 0 0 1 5 6h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zM5 8a.5.5 0 0 0 0 1h3a.5.5 0 0 0 0-1H5z" />
+                                <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2zm10-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1z" />
+                            </svg>
+                        </div>
+                        <span class="dash-brand-name">CMS Panel</span>
+                    </div>
+
+                    <div class="dash-header-sep"></div>
+
+                    <div class="dash-search">
+                        <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" />
+                        </svg>
+                        <input type="text" placeholder="Ara veya komut gir..."
+                               @bind="_globalSearch" @bind:event="oninput"
+                               @onfocus="() => _searchOpen = true"
+                               @onblur="CloseSearchDelayed" />
+                        <kbd>⌘K</kbd>
+
+                        @if (_searchOpen && _globalSearch.Length >= 2)
+                        {
+                            <div class="dash-search-results" @onmousedown:preventDefault>
+                                @{
+                                    var q = _globalSearch.ToLower();
+                                    var hits = NavMenuState.BuiltInEntries
+                                    .Where(e => e.Label.Contains(q, StringComparison.OrdinalIgnoreCase)
+                                    && (string.IsNullOrEmpty(e.RequiredPerm)
+                                    || AppState.Session.Can(e.RequiredPerm)))
+                                    .Take(8).ToList();
+                                }
+                                @foreach (var h in hits)
+                                {
+                                    var entry = h;
+                                    <a class="dash-search-item" href="@entry.Href"
+                                       @onclick='() => { _globalSearch = ""; _searchOpen = false; }'>
+                                        <SvgIcon Name="@entry.Icon" Size="13" />
+                                        <span>@entry.Label</span>
+                                        <small class="text-muted ms-auto">@entry.Href</small>
+                                    </a>
+                                }
+                                @if (!hits.Any())
+                                {
+                                    <div class="dash-search-empty">Sonuç bulunamadı</div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <div class="dash-header-sep"></div>
+
+                    <div class="dash-tenant-badge">
+                        <span class="dash-tenant-dot"></span>
+                        <span>@AppState.Session.CurrentTenantName</span>
+                    </div>
+
+                    <div class="dash-header-sep"></div>
+
+                    <div class="dash-header-actions">
+                        <ThemeToggle />
+
+                        <div class="dropdown">
+                            <button class="dash-avatar-btn" type="button" data-bs-toggle="dropdown">
+                                <div class="dash-avatar" style="background:@_avatarColor">@_initial</div>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end dash-user-menu">
+                                <li class="dash-user-menu-header">
+                                    <strong>@AppState.Session.DisplayName</strong>
+                                    <span>@AppState.Session.Email</span>
+                                </li>
+                                <li><hr class="dropdown-divider my-1"></li>
+                                <li>
+                                    <a class="dropdown-item" href="/profile">
+                                        <SvgIcon Name="icon-user" Size="13" Style="margin-right:8px" />
+                                        Profil
+                                    </a>
+                                </li>
+                                @if (AppState.Session.Can("tenants.manage"))
+                                {
+                                    <li>
+                                        <a class="dropdown-item" href="/settings/nav">
+                                            <SvgIcon Name="icon-menu" Size="13" Style="margin-right:8px" />
+                                            Menü Editörü
+                                        </a>
+                                    </li>
+                                }
+                                <li><hr class="dropdown-divider my-1"></li>
+                                <li>
+                                    <button class="dropdown-item text-danger" @onclick="Logout">
+                                        <SvgIcon Name="icon-logout" Size="13" Style="margin-right:8px" />
+                                        Çıkış Yap
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </header>
+
+                <nav class="dash-tabbar">
+                    <div class="dash-tabbar-left">
+                        <span class="dash-breadcrumb">@_breadcrumb</span>
+                    </div>
+                    <div class="dash-tabbar-inner">
+                        @foreach (var tab in _tabs)
+                        {
+                            var t = tab;
+                            var isActive = ActiveTabKey == t.Key;
+                            var entries = NavMenu.GetVisibleEntries(t.Key);
+                            @if (entries.Any())
+                            {
+                                <button class="dash-tab @(isActive ? "dash-tab--active" : "")"
+                                        @onclick="() => SelectTab(t)">
+                                    <SvgIcon Name="@t.Icon" Size="14" Style="margin-right:5px" />
+                                    @t.Label
+                                </button>
+                            }
+                        }
+                    </div>
+                </nav>
+
+                <div class="dash-body">
+
+                    <!-- Sol sidebar -->
+                    <aside class="dash-sidebar">
+
+                        <!-- Sidebar arama -->
+                        <div class="dash-sidebar-search">
+                            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" />
+                            </svg>
+                            <input type="text" placeholder="Menüde ara..."
+                                   @bind="_sidebarFilter" @bind:event="oninput" />
+                        </div>
+
+                        <!-- Dinamik sidenav -->
+                        <nav class="dash-sidenav">
+                            @{
+                                var visibleItems = NavMenu.GetVisibleEntries(ActiveTabKey)
+                                .Where(e => string.IsNullOrEmpty(_sidebarFilter) ||
+                                e.Label.Contains(_sidebarFilter, StringComparison.OrdinalIgnoreCase))
+                                .ToList();
+                            }
+
+                            @foreach (var item in visibleItems)
+                            {
+                                <NavLink class="dash-nav-item"
+                                         href="@item.Href"
+                                         Match="@(item.Href == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)"
+                                         ActiveClass="dash-nav-item--active">
+                                    <SvgIcon Name="@item.Icon" Size="15" Style="flex-shrink:0" />
+                                    <span>@item.Label</span>
+                                    @if (item.Badge is not null)
+                                    {
+                                        <span class="dash-nav-badge @item.BadgeCss">@item.Badge</span>
+                                    }
+                                </NavLink>
+                            }
+
+                            @if (!visibleItems.Any() && !string.IsNullOrEmpty(_sidebarFilter))
+                            {
+                                <p class="dash-nav-empty">Sonuç bulunamadı</p>
+                            }
+                        </nav>
+
+                        <!-- Sidebar footer -->
+                        <div class="dash-sidebar-footer">
+                            <div class="dash-sidebar-user">
+                                <div class="dash-sidebar-avatar" style="background:@_avatarColor">
+                                    @_initial
+                                </div>
+                                <div class="dash-sidebar-userinfo">
+                                    <div class="dash-sidebar-name">
+                                        @(AppState.Session.DisplayName ?? AppState.Session.Email)
+                                    </div>
+                                    <div class="dash-sidebar-role">@AppState.Session.CurrentTenantName</div>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <!-- Ana içerik -->
+                    <main class="dash-main">
+                        @Body
+                    </main>
+
+                    <!-- Toast bildirimleri -->
+                    <ToastContainer />
+                </div>
+
+                <footer class="dash-footer">
+                    <span>© 2025 CMS Panel</span>
+                    <a href="/audit-logs">Sistem Logu</a>
+                    <a href="/profile">Profil</a>
+                    @if (AppState.Session.Can("tenants.manage"))
+                    {
+                        <a href="/settings/nav">Menü</a>
+                    }
+                    <span class="ms-auto dash-footer-version">v1.0</span>
+                </footer>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized><RedirectToLogin /></NotAuthorized>
+</AuthorizeView>
+
+@code {
+    string _globalSearch = "", _sidebarFilter = "";
+    bool _searchOpen;
+    List<NavTabDef> _tabs = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await NavMenu.EnsureLoadedAsync();
+        _tabs = NavMenu.GetVisibleTabs();
+
+        Nav.LocationChanged += OnLocationChanged;
+        AppState.AuthProvider.AuthenticationStateChanged += OnAuth;
+        NavMenu.OnChanged += OnNavChanged;
+        AppState.OnThemeChanged += OnThemeChanged;
+
+    }
+
+    void OnThemeChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await PermSync.SyncIfNeededAsync();
+    }
+
+    void OnLocationChanged(object? s, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => InvokeAsync(StateHasChanged);
+
+    void OnAuth(Task<AuthenticationState> _)
+    {
+        _tabs = NavMenu.GetVisibleTabs();
+        InvokeAsync(StateHasChanged);
+    }
+
+    void OnNavChanged()
+    {
+        _tabs = NavMenu.GetVisibleTabs();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+        AppState.AuthProvider.AuthenticationStateChanged -= OnAuth;
+        NavMenu.OnChanged -= OnNavChanged;
+        AppState.OnThemeChanged -= OnThemeChanged;
+
+    }
+
+    // ── Tab seçimi ────────────────────────────────────────────────────────────
+
+    string ActiveTabKey
+    {
+        get
+        {
+            var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/').ToLower();
+            if (path is "" or "/") return "dashboard";
+
+            // Önce custom öğeleri, sonra built-in'leri kontrol et
+            foreach (var tab in _tabs)
+            {
+                var entries = NavMenu.GetVisibleEntries(tab.Key);
+                if (entries.Any(e => e.Href != "/" && path.StartsWith(e.Href.ToLower())))
+                    return tab.Key;
+            }
+            return _tabs.FirstOrDefault()?.Key ?? "dashboard";
+        }
+    }
+
+    void SelectTab(NavTabDef tab)
+    {
+        var first = NavMenu.GetVisibleEntries(tab.Key).FirstOrDefault();
+        if (first is not null) Nav.NavigateTo(first.Href);
+    }
+
+    string _breadcrumb
+    {
+        get
+        {
+            var path = new Uri(Nav.Uri).AbsolutePath;
+            return NavMenuState.BuiltInEntries
+                .Concat(NavMenu.GetAllEntries("content"))
+                .FirstOrDefault(e => e.Href != "/" &&
+                    path.StartsWith(e.Href, StringComparison.OrdinalIgnoreCase))
+                ?.Label ?? "Dashboard";
+        }
+    }
+
+    // ── Search ────────────────────────────────────────────────────────────────
+
+    System.Timers.Timer? _searchBlurTimer;
+    void CloseSearchDelayed()
+    {
+        _searchBlurTimer?.Dispose();
+        _searchBlurTimer = new(200);
+        _searchBlurTimer.Elapsed += (_, _) =>
+        {
+            _searchOpen = false;
+            InvokeAsync(StateHasChanged);
+        };
+        _searchBlurTimer.AutoReset = false;
+        _searchBlurTimer.Start();
+    }
+
+    // ── Avatar ────────────────────────────────────────────────────────────────
+
+    string _initial => AppState.Session.Avatar;
+
+    string _avatarColor
+    {
+        get
+        {
+            string[] p = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#0ea5e9"];
+            return p[Math.Abs(AppState.Session.Email.GetHashCode()) % p.Length];
+        }
+    }
+
+    async Task Logout()
+    {
+        await AppState.LogoutAsync();
+        Nav.NavigateTo("/login", forceLoad: false);
+    }
+}

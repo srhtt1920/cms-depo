@@ -1,0 +1,355 @@
+﻿@page "/contents/archive"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<PageTitle>Arşiv — CMS</PageTitle>
+@if (!AppState.Session.Can("content.read"))
+{
+    <AccessDenied />
+    return;
+}
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageHeader Title="Arşiv" Subtitle="Arşivlenmiş içerikler">
+    <Actions>
+        <a href="/contents" class="btn btn-ghost btn-sm">← İçeriklere Dön</a>
+        <button class="btn-ghost btn-icon" @onclick="LoadAsync" title="Yenile">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+            </svg>
+        </button>
+    </Actions>
+</PageHeader>
+
+<!-- KPI Şeridi -->
+<div class="row g-2 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="ap-kpi" style="border-left-color:#6b7280">
+            <div class="ap-kpi-val">@_items.Count</div>
+            <div class="ap-kpi-label">Arşivlendi</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="ap-kpi" style="border-left-color:#3b82f6">
+            <div class="ap-kpi-val">@_selected.Count</div>
+            <div class="ap-kpi-label">Seçili</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="ap-kpi" style="border-left-color:#22c55e">
+            <div class="ap-kpi-val">@_items.Count(i => i.Languages.Count > 1)</div>
+            <div class="ap-kpi-label">Çok Dilli</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="ap-kpi" style="border-left-color:#f59e0b">
+            <div class="ap-kpi-val">@_items.Count(i => i.Languages.Count == 1)</div>
+            <div class="ap-kpi-label">Tek Dilli</div>
+        </div>
+    </div>
+</div>
+
+
+
+<!-- Bulk action bar -->
+@if (_selected.Any())
+{
+    <div class="d-flex align-items-center gap-2 px-3 py-2 rounded mb-3"
+         style="background:var(--accent-soft,rgba(99,102,241,.1));border:1px solid var(--accent)">
+        <span class="fw-medium" style="font-size:13px;color:var(--accent)">@_selected.Count seçili</span>
+        <div class="ms-2 d-flex gap-1 flex-wrap">
+            @if (AppState.Session.Can("content.publish"))
+            {
+                <button class="btn btn-sm btn-outline-success" @onclick="BulkRestoreAsync" disabled="@_bulk">
+                    ♻️ Geri Yükle
+                </button>
+            }
+            @if (AppState.Session.Can("content.delete"))
+            {
+                <button class="btn btn-sm btn-outline-danger" @onclick="BulkDeleteAsync" disabled="@_bulk">
+                    🗑️ Kalıcı Sil
+                </button>
+            }
+        </div>
+        <button class="btn btn-ghost btn-sm ms-auto" @onclick="() => _selected.Clear()">✕</button>
+        @if (_bulk)
+        {
+            <div class="spinner-border spinner-border-sm ms-2" style="color:var(--accent)"></div>
+        }
+    </div>
+}
+
+<!-- Arama & Filtre -->
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <div style="position:relative;max-width:260px;flex:1">
+        <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text-3)"
+             width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" />
+        </svg>
+        <input @bind="_search" @bind:event="oninput" type="text" class="form-control form-control-sm"
+               style="padding-left:30px" placeholder="Slug ara..." />
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center p-5">
+        <div class="spinner-border" style="width:1.5rem;height:1.5rem;color:var(--accent)"></div>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger py-2 small">
+        @_error
+        <button class="btn btn-link btn-sm" @onclick="LoadAsync">Tekrar dene</button>
+    </div>
+}
+else if (!Filtered.Any())
+{
+    <div class="text-center py-5">
+        <div style="font-size:40px;margin-bottom:12px">📦</div>
+        <div class="fw-semibold text-muted">Arşivde içerik yok</div>
+        <div class="small text-muted mt-1">Arşivlenen içerikler burada görünür.</div>
+    </div>
+}
+else
+{
+    <div class="cms-table-wrap">
+        <table class="cms-table">
+            <thead>
+                <tr>
+                    <th class="col-check">
+                        <input type="checkbox" class="form-check-input"
+                               @onchange="e => ToggleAll((bool)e.Value!)" />
+                    </th>
+                    <th><div class="th-inner">Başlık / Slug</div></th>
+                    <th><div class="th-inner">Diller</div></th>
+                    <th><div class="th-inner">Arşiv Tarihi</div></th>
+                    <th style="width:140px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Filtered)
+                {
+                    var id = item.Id;
+                    var isSelected = _selected.Contains(id);
+                    <tr class="@(isSelected ? "table-active" : "")">
+                        <td>
+                            <input type="checkbox" class="form-check-input"
+                                   checked="@isSelected"
+                                   @onchange="e => Toggle(id, (bool)e.Value!)" />
+                        </td>
+                        <td>
+                            <div class="fw-medium" style="font-size:13px">@item.Title</div>
+                            <div class="mono text-muted" style="font-size:10px">/@item.Slug</div>
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1 flex-wrap">
+                                @foreach (var l in item.Languages)
+                                {
+                                    <span class="badge bg-light text-dark border" style="font-size:9px">@l</span>
+                                }
+                            </div>
+                        </td>
+                        <td>
+                            <span class="small text-muted">
+                                @(item.DeletedAt?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")
+                            </span>
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1 justify-content-end">
+                                @if (AppState.Session.Can("content.publish"))
+                                {
+                                    <button class="btn btn-sm btn-outline-success"
+                                            style="font-size:11px"
+                                            @onclick="() => RestoreAsync(id)"
+                                            disabled="@(_processing == id)">
+                                        @if (_processing == id)
+                                        {
+                                            <span class="spinner-border spinner-border-sm"></span>
+                                        }
+                                        else
+                                        {
+
+                                            <span>♻️ Geri Yükle</span>
+                                        }
+                                    </button>
+                                }
+                                @if (AppState.Session.Can("content.delete"))
+                                {
+                                    <button class="btn btn-sm btn-outline-danger"
+                                            style="font-size:11px"
+                                            @onclick="() => ConfirmDelete(item)"
+                                            disabled="@(_processing == id)">
+                                        🗑️
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="small text-muted mt-2">Toplam @_items.Count arşivlenmiş içerik</div>
+}
+
+<!-- Silme Onay Modal -->
+@if (_deleteTarget is not null)
+{
+    <div class="modal-backdrop-blur" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1040"
+         @onclick="() => _deleteTarget = null"></div>
+    <div class="modal fade show d-block" tabindex="-1" style="z-index:1050">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-body p-4 text-center">
+                    <div style="font-size:36px;margin-bottom:12px">⚠️</div>
+                    <h6 class="fw-semibold mb-2">Kalıcı Silme Onayı</h6>
+                    <p class="small text-muted mb-1">
+                        <strong>@_deleteTarget.Title</strong> içeriğini kalıcı olarak silmek istediğinizden emin misiniz?
+                    </p>
+                    <p class="small text-danger mb-3">Bu işlem geri alınamaz!</p>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-secondary btn-sm flex-fill"
+                                @onclick="() => _deleteTarget = null">
+                            İptal
+                        </button>
+                        <button class="btn btn-danger btn-sm flex-fill"
+                                @onclick="HardDeleteAsync" disabled="@_deleting">
+                            @if (_deleting)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Sil
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    List<TrashItemDto> _items = [];
+    HashSet<Guid> _selected = [];
+    string _search = "";
+    bool _loading = true;
+    bool _bulk;
+    bool _deleting;
+    Guid? _processing;
+    string? _error;
+    TrashItemDto? _deleteTarget;
+
+    IEnumerable<TrashItemDto> Filtered =>
+        string.IsNullOrEmpty(_search)
+            ? _items
+            : _items.Where(i => i.Slug.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                              || i.Title.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        _loading = true; _error = null; _selected.Clear();
+        StateHasChanged();
+        try
+        {
+            // Arşiv = trash listesinden Status=="Archived" olanlar
+            var r = await ContentApiClient.GetTrashAsync();
+            if (!r.IsSuccess) { _error = r.Error!.Message; return; }
+            _items = r.Data ?? [];
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { _loading = false; }
+    }
+
+    void ToggleAll(bool v)
+    {
+        _selected.Clear();
+        if (v) foreach (var i in Filtered) _selected.Add(i.Id);
+    }
+
+    void Toggle(Guid id, bool v)
+    {
+        if (v) _selected.Add(id); else _selected.Remove(id);
+    }
+
+    async Task RestoreAsync(Guid id)
+    {
+        _processing = id;
+        try
+        {
+            var r = await ContentApiClient.RestoreContentAsync(id);
+            if (r.IsSuccess) { Toast.Success("İçerik geri yüklendi."); await LoadAsync(); }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        finally { _processing = null; }
+    }
+
+    void ConfirmDelete(TrashItemDto item) => _deleteTarget = item;
+
+    async Task HardDeleteAsync()
+    {
+        if (_deleteTarget is null) return;
+        _deleting = true;
+        try
+        {
+            var r = await ContentApiClient.HardDeleteContentAsync(_deleteTarget.Id);
+            if (r.IsSuccess) { Toast.Warning("İçerik kalıcı olarak silindi."); _deleteTarget = null; await LoadAsync(); }
+            else { Toast.Error(r.Error!.Message); }
+        }
+        finally { _deleting = false; }
+    }
+
+    async Task BulkRestoreAsync()
+    {
+        _bulk = true;
+        var ids = _selected.ToList();
+        int ok = 0;
+        foreach (var id in ids)
+        {
+            var r = await ContentApiClient.RestoreContentAsync(id);
+            if (r.IsSuccess) ok++;
+        }
+        Toast.Success($"{ok}/{ids.Count} içerik geri yüklendi.");
+        _bulk = false;
+        await LoadAsync();
+    }
+
+    async Task BulkDeleteAsync()
+    {
+        _bulk = true;
+        var ids = _selected.ToList();
+        int ok = 0;
+        foreach (var id in ids)
+        {
+            var r = await ContentApiClient.HardDeleteContentAsync(id);
+            if (r.IsSuccess) ok++;
+        }
+        Toast.Warning($"{ok}/{ids.Count} içerik kalıcı silindi.");
+        _bulk = false;
+        await LoadAsync();
+    }
+}

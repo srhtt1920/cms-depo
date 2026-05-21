@@ -1,0 +1,224 @@
+﻿@page "/settings/nav"
+@attribute [Authorize]
+@layout DashBoardLayout
+@implements IDisposable
+
+<PageTitle>Menü Editörü — CMS</PageTitle>
+
+@if (!AppState.Session.Can("tenants.manage"))
+{
+    <AccessDenied />
+}
+else
+{
+    <div class="dash-content-toolbar">
+        <div class="left-panel d-flex align-items-center gap-3">
+            <span class="cms-page-title">Menu Düzenleme</span>
+            <div class="dash-header-sep"></div>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="ConfirmReset">
+                Varsayılana Dön
+            </button>
+            <button class="btn btn-outline-primary btn-sm" @onclick="ShowAddModal">
+                + Özel Link
+            </button>
+            <div class="dash-header-sep"></div>
+        </div>
+        <div class="right-panel">
+            <div class="input-group input-group-sm" style="width:200px">
+                <span class="input-group-text bg-transparent">
+                    <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" />
+                    </svg>
+                </span>
+                <input type="text" class="form-control" placeholder="Ara..." />
+            </div>
+            <button class="btn-ghost btn-icon" @onclick="() => Refresh()">
+                <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                    <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="dash-content">
+        <div class="dash-content-inner">
+            @if (!string.IsNullOrWhiteSpace(_success))
+            {
+                <div class="alert alert-success py-2 small mb-3">@_success</div>
+            }
+
+            <div class="d-flex gap-2 mb-4 flex-wrap">
+                @foreach (var tab in NavMenuState.BuiltInTabs)
+                {
+                    <button class="btn btn-sm @(_activeTab == tab.Key ? "btn-primary" : "btn-outline-secondary")"
+                            @onclick="() => SelectTab(tab.Key)">
+                        @tab.Label
+                    </button>
+                }
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-header d-flex justify-content-between">
+                    <span>@CurrentTabLabel</span>
+                    <span>@Entries.Count öğe</span>
+                </div>
+
+                <div class="card-body p-0">
+                    @if (!Entries.Any())
+                    {
+                        <div class="p-4 text-center text-muted">Öğe yok</div>
+                    }
+                    else
+                    {
+                        @for (int i = 0; i < Entries.Count; i++)
+                        {
+                            var item = Entries[i];
+                            var hidden = IsHidden(item.Id);
+
+                            <div class="p-3 border-bottom"
+                                 style="@GetRowStyle(hidden)">
+
+                                <div class="d-flex align-items-center gap-3">
+
+                                    <div style="flex:1">
+                                        @if (_editingId == item.Id)
+                                        {
+                                            <input class="form-control form-control-sm"
+                                                   @bind="_editLabel" />
+                                        }
+                                        else
+                                        {
+                                            <div>@item.Label</div>
+                                            <small class="text-muted">@item.Href</small>
+                                        }
+                                    </div>
+
+                                    <div class="d-flex gap-1">
+                                        <button class="btn btn-sm btn-outline-secondary"
+                                                disabled="@(i == 0)"
+                                                @onclick="() => MoveUp(item.Id)">
+                                            ↑
+                                        </button>
+
+                                        <button class="btn btn-sm btn-outline-secondary"
+                                                disabled="@(i == Entries.Count - 1)"
+                                                @onclick="() => MoveDown(item.Id)">
+                                            ↓
+                                        </button>
+
+                                        @if (_editingId == item.Id)
+                                        {
+                                            <button class="btn btn-sm btn-primary"
+                                                    @onclick="() => SaveLabel(item.Id)">
+                                                Kaydet
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-primary"
+                                                    @onclick="() => StartEdit(item.Id, item.Label)">
+                                                Düzenle
+                                            </button>
+                                        }
+
+                                        <button class="btn btn-sm @(hidden ? "btn-success" : "btn-warning")"
+                                                @onclick="() => ToggleVisibility(item.Id, hidden)">
+                                            @(hidden ? "Göster" : "Gizle")
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+}
+
+@code {
+    string _activeTab = "content";
+    string? _editingId;
+    string _editLabel = "";
+    string _success = "";
+
+    bool _showAddModal;
+    bool _showResetConfirm;
+
+    List<NavMenuEntry> Entries => NavMenu.GetAllEntries(_activeTab);
+
+    string CurrentTabLabel =>
+        NavMenuState.BuiltInTabs.FirstOrDefault(x => x.Key == _activeTab)?.Label ?? "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await NavMenu.EnsureLoadedAsync();
+        NavMenu.OnChanged += Refresh;
+    }
+
+
+
+    void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        NavMenu.OnChanged -= Refresh;
+    }
+
+    void SelectTab(string key)
+    {
+        _activeTab = key;
+    }
+
+    void ShowAddModal()
+    {
+        _showAddModal = true;
+    }
+
+    bool IsHidden(string id)
+    {
+        return NavMenu.GetCustomization(id) is { IsVisible: false };
+    }
+
+    string GetRowStyle(bool hidden)
+    {
+        return $"background:{(hidden ? "var(--surface-2)" : "var(--surface)")};" +
+               $"opacity:{(hidden ? ".55" : "1")};";
+    }
+
+    void StartEdit(string id, string label)
+    {
+        _editingId = id;
+        _editLabel = label;
+    }
+
+    async Task SaveLabel(string id)
+    {
+        await NavMenu.SetLabelAsync(id, _editLabel);
+        _editingId = null;
+        _success = "Etiket güncellendi.";
+    }
+
+    async Task ToggleVisibility(string id, bool hidden)
+    {
+        await NavMenu.SetVisibilityAsync(id, hidden);
+    }
+
+    async Task MoveUp(string id)
+    {
+        await NavMenu.MoveUpAsync(id, _activeTab);
+    }
+
+    async Task MoveDown(string id)
+    {
+        await NavMenu.MoveDownAsync(id, _activeTab);
+    }
+
+    void ConfirmReset()
+    {
+        _showResetConfirm = true;
+    }
+}

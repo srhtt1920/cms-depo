@@ -1,0 +1,87 @@
+@using CMS.Blazor.Server.Panel.Models
+
+<div class="page-tree-node @(IsSelected ? "page-tree-node--selected" : "")"
+     style="margin-left:@(Depth * 16)px">
+    <div class="page-tree-row d-flex align-items-center gap-1 py-1 px-2 rounded"
+         style="cursor:pointer;@(IsSelected ? "background:var(--accent);color:#fff;" : "")
+                @(Node.IsActive ? "" : "opacity:.5;")"
+         @onclick="() => OnSelect.InvokeAsync(Node.Id)">
+
+        <!-- Expand/collapse -->
+        @if (Node.Children.Any())
+        {
+            <button class="btn btn-xs" style="padding:0 3px;font-size:10px;background:none;border:none;@(IsSelected?"color:#fff":"")"
+                    @onclick:stopPropagation="true"
+                    @onclick="ToggleExpand">
+                @(_expanded ? "▾" : "▸")
+            </button>
+        }
+        else
+        {
+            <span style="width:16px;display:inline-block"></span>
+        }
+
+        <!-- İkon -->
+        <span style="font-size:13px">@(Node.PageType == "Category" ? "📁" : "📄")</span>
+
+        <!-- Label -->
+        <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            @(Node.Icon is not null ? $"[{Node.Icon}] " : "")
+            @(Node.Translations.FirstOrDefault()?.Title ?? Node.Id.ToString()[..8] + "…")
+        </span>
+
+        <!-- Badges -->
+        @if (!Node.IsVisible)
+        {
+            <span class="badge" style="font-size:9px;background:var(--surface-3);color:var(--text-3)">Gizli</span>
+        }
+        @if (Node.ContentType is not null)
+        {
+            <span class="badge" style="font-size:9px;background:var(--surface-2);color:var(--text-2)">@Node.ContentType</span>
+        }
+
+        <!-- Eylemler -->
+        @if (CanManage)
+        {
+            <div class="d-flex gap-1" @onclick:stopPropagation="true">
+                <button class="btn btn-xs btn-outline-secondary"
+                        style="font-size:10px;padding:0 5px;@(IsSelected?"border-color:#fff;color:#fff;":"")"
+                        @onclick="() => OnAddChild.InvokeAsync(Node.Id)"
+                        title="Alt sayfa ekle">+</button>
+                <button class="btn btn-xs btn-outline-danger"
+                        style="font-size:10px;padding:0 5px"
+                        @onclick="() => OnDelete.InvokeAsync(Node.Id)"
+                        title="Sil">✕</button>
+            </div>
+        }
+    </div>
+
+    @if (_expanded && Node.Children.Any())
+    {
+        @foreach (var child in Node.Children.OrderBy(c => c.Order))
+        {
+            <PageTreeNode Node="child"
+                          SelectedId="SelectedId"
+                          Depth="Depth + 1"
+                          OnSelect="OnSelect"
+                          OnAddChild="OnAddChild"
+                          OnDelete="OnDelete"
+                          CanManage="CanManage" />
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public PageTreeDetailNodeDto Node { get; set; } = default!;
+    [Parameter] public Guid? SelectedId { get; set; }
+    [Parameter] public int Depth { get; set; }
+    [Parameter] public EventCallback<Guid> OnSelect { get; set; }
+    [Parameter] public EventCallback<Guid> OnAddChild { get; set; }
+    [Parameter] public EventCallback<Guid> OnDelete { get; set; }
+    [Parameter] public bool CanManage { get; set; }
+
+    bool _expanded = true;
+    bool IsSelected => SelectedId == Node.Id;
+
+    void ToggleExpand() => _expanded = !_expanded;
+}

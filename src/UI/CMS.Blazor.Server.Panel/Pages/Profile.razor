@@ -1,0 +1,198 @@
+@page "/profile"
+@attribute [Authorize]
+@layout DashBoardLayout
+
+<div class="dash-content-toolbar">
+    <div class="left-panel d-flex align-items-center gap-3">
+        <span class="cms-page-title">Kullanıcılar</span>
+        <div class="dash-header-sep"></div>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" @onclick="OpenAdd">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" /></svg>
+            Kullanıcı Ekle
+        </button>
+    </div>
+    <div class="right-panel">
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <SearchBox @bind-Value="_search" />
+        <IconButton Icon="icon-refresh" OnClick="LoadAsync" />
+    </div>
+</div>
+
+<div class="dash-content">
+    <div class="dash-content-inner">
+    </div>
+</div>
+
+<PageTitle>Profil — CMS</PageTitle>
+<PageHeader Title="Profil" Subtitle="Hesap ayarları ve tercihler" />
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger py-2 small mb-3">@_error</div>
+}
+@if (_success is not null)
+{
+    <div class="alert alert-success py-2 small mb-3">@_success</div>
+}
+
+<div class="row g-4">
+    <!-- Profil bilgileri -->
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <h6 class="fw-semibold mb-4">Hesap Bilgileri</h6>
+                <div class="d-flex align-items-center gap-3 mb-4">
+                    <div class="rounded-circle bg-primary d-flex align-items-center
+                                justify-content-center text-white fw-bold flex-shrink-0"
+                         style="width:56px;height:56px;font-size:1.4rem">
+                        @AppState.Session.Avatar
+                    </div>
+                    <div>
+                        <div class="fw-semibold">@AppState.Session.DisplayLabel</div>
+                        <small class="text-muted">@AppState.Session.CurrentTenantName</small>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Ad Soyad</label>
+                    <input @bind="_displayName" type="text" class="form-control form-control-sm"
+                           placeholder="Ad Soyad (opsiyonel)" />
+                </div>
+                <div class="mb-4">
+                    <label class="form-label small fw-medium">E-posta</label>
+                    <input @bind="_email" type="email" class="form-control form-control-sm" />
+                </div>
+                <button class="btn btn-primary btn-sm" @onclick="SaveProfile" disabled="@_saving">
+                    @if (_saving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Kaydet
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Şifre değiştir -->
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body p-4">
+                <h6 class="fw-semibold mb-4">Şifre Değiştir</h6>
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Mevcut Şifre</label>
+                    <input @bind="_currentPw" type="password" class="form-control form-control-sm" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Yeni Şifre</label>
+                    <input @bind="_newPw" type="password" class="form-control form-control-sm" />
+                </div>
+                <div class="mb-4">
+                    <label class="form-label small fw-medium">Yeni Şifre (Tekrar)</label>
+                    <input @bind="_confirmPw" type="password" class="form-control form-control-sm" />
+                </div>
+                <button class="btn btn-outline-danger btn-sm" @onclick="ChangePassword" disabled="@_saving">
+                    Şifreyi Güncelle
+                </button>
+            </div>
+        </div>
+
+        <!-- Görünüm tercihleri -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <h6 class="fw-semibold mb-3">Görünüm Tercihleri</h6>
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Tema</label>
+                    <div class="d-flex gap-2">
+                        @foreach (var (val, lbl) in new[] { ("light", "Açık"), ("dark", "Koyu") })
+                        {
+                            <button class="btn btn-sm @(AppState.Preferences.Theme == val ? "btn-primary" : "btn-outline-secondary")"
+                                    @onclick="() => SetTheme(val)">
+                                @lbl
+                            </button>
+                        }
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-medium">Dil</label>
+                    <select class="form-select form-select-sm" @onchange="e => SetLanguage(e.Value?.ToString()!)">
+                        @foreach (var (val, lbl) in new[] { ("tr", "Türkçe"), ("en", "English"), ("de", "Deutsch") })
+                        {
+                            <option value="@val" selected="@(AppState.Preferences.Language == val)">@lbl</option>
+                        }
+                    </select>
+                </div>
+                <div class="mb-0">
+                    <label class="form-label small fw-medium">Boyut</label>
+                    <div class="d-flex gap-2">
+                        @foreach (var (val, lbl) in new[] { ("sm", "Küçük"), ("md", "Orta"), ("lg", "Büyük") })
+                        {
+                            <button class="btn btn-sm @(AppState.Preferences.SizeMode == val ? "btn-primary" : "btn-outline-secondary")"
+                                    @onclick="() => SetSizeMode(val)">
+                                @lbl
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Çıkış -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm border-danger" style="border-color:#dc354530!important">
+            <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                <div>
+                    <div class="fw-medium small">Oturumu Kapat</div>
+                    <div class="text-muted" style="font-size:12px">Tüm oturumlar sonlandırılır.</div>
+                </div>
+                <button class="btn btn-outline-danger btn-sm" @onclick="Logout">Çıkış Yap</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    string? _displayName, _email, _currentPw, _newPw, _confirmPw, _error, _success;
+    bool _saving;
+    string _search = "";
+    protected override void OnInitialized()
+    {
+        _email = AppState.Session.Email;
+        _displayName = AppState.Session.DisplayName;
+    }
+
+    async Task SaveProfile()
+    {
+        _saving = true; _error = null; _success = null;
+        var r = await AuthApiClient.UpdateProfileAsync(new UpdateProfileRequest(_displayName, _email ?? ""));
+        if (r.IsSuccess)
+        {
+            _success = "Profil güncellendi.";
+            if (r.Data is not null)
+            {
+                AppState.Session.Email = r.Data.Email;
+                AppState.Session.DisplayName = r.Data.DisplayName;
+            }
+        }
+        else _error = r.Error?.Message;
+        _saving = false;
+    }
+
+    async Task ChangePassword()
+    {
+        if (string.IsNullOrWhiteSpace(_currentPw) || string.IsNullOrWhiteSpace(_newPw))
+        { _error = "Tüm şifre alanları zorunlu."; return; }
+        _saving = true; _error = null; _success = null;
+        var r = await AuthApiClient.ChangePasswordAsync(
+            new ChangePasswordRequest(_currentPw!, _newPw!, _confirmPw ?? ""));
+        if (r.IsSuccess) { _success = "Şifre güncellendi."; _currentPw = _newPw = _confirmPw = null; }
+        else _error = r.Error?.Message;
+        _saving = false;
+    }
+
+    async Task SetTheme(string v) => await AppState.SetThemeAsync(v);
+    async Task SetLanguage(string v) => await AppState.SetLanguageAsync(v);
+    async Task SetSizeMode(string v) => await AppState.SetSizeModeAsync(v);
+    async Task Logout() => await Auth.LogoutAsync();
+}
